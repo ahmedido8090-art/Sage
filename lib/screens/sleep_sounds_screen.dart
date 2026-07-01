@@ -1,699 +1,1113 @@
-import 'package:audioplayers/audioplayers.dart';
+// screens/sleep_sounds_screen.dart
+//
+// Redesigned Sleep Sounds screen.
+//
+// What's new vs the original:
+//   • Horizontal sound picker — large icon cards with accent fills, replacing the
+//     awkward 2-col grid. Tap to select, tap again to deselect. No play/pause
+//     confusion with the card itself.
+//   • Sound Mixer — up to 2 sounds can play simultaneously with independent
+//     volume sliders. Layering Rain + White Noise, for example.
+//   • Sleep Timer — 15 / 30 / 45 / 60 / ∞ options shown as pill chips above
+//     the now-playing panel. Countdown visible while active.
+//   • Now-Playing panel redesigned: larger art circle (accent color), track name,
+//     timer countdown, seek bar, and standard transport controls all in one
+//     cohesive card that slides up when a sound is selected.
+//   • Recommendation banner replaced with an inline "For you" badge on the sound
+//     card plus a small explanatory chip at the top — less visual noise.
+//   • Tips card kept but condensed to 3 contextual bullets, not 6+.
+//   • embedded=true still works (no Scaffold/AppBar).
+//
+// Dependencies: audioplayers (already in pubspec), everything else from app.
+
+import 'dart:async';
 import 'package:flutter/material.dart';
-import '../services/data_storage_service.dart';
-import '../theme/bella_theme.dart';
+import 'package:audioplayers/audioplayers.dart';
+import '../services/bella_service.dart';
+import '../services/user_service.dart';
+import '../services/sleep_sounds_player_service.dart';
+import '../theme/app_theme.dart';
+import '../theme/motion.dart';
+import '../widgets/reveal.dart';
+import '../widgets/pressable.dart';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Data
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _Sound {
+  final String name;
+  final String description;
+  final IconData icon;
+  final Color accent;
+  final String asset;
+
+  const _Sound({
+    required this.name,
+    required this.description,
+    required this.icon,
+    required this.accent,
+    required this.asset,
+  });
+}
+
+// Timer option — null minutes = play indefinitely.
+class _TimerOption {
+  final String label;
+  final int? minutes;
+  const _TimerOption(this.label, this.minutes);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Widget
+// ─────────────────────────────────────────────────────────────────────────────
 
 class SleepSoundsScreen extends StatefulWidget {
-  const SleepSoundsScreen({super.key});
+  final bool embedded;
+  const SleepSoundsScreen({super.key, this.embedded = false});
 
   @override
   State<SleepSoundsScreen> createState() => _SleepSoundsScreenState();
 }
 
 class _SleepSoundsScreenState extends State<SleepSoundsScreen>
-    with WidgetsBindingObserver {
-  late AudioPlayer _audioPlayer;
-  final DataStorageService _dataStorage = DataStorageService();
+    with TickerProviderStateMixin {
+  // ── Services ───────────────────────────────────────────────────────────────
+  final BellaService _bella = BellaService();
 
-  String? _currentlyPlaying;
-  bool _isPlaying = false;
-  Duration _duration = Duration.zero;
-  Duration _position = Duration.zero;
-  bool _isDisposed = false;
-  DateTime? _startTime;
-
-  final List<Map<String, dynamic>> _sleepSounds = [
-    {
-      'name': 'Rainfall',
-      'description': 'Gentle rain for relaxation',
-      'icon': Icons.water_drop,
-      'color': BellaColors.secondary,
-      'audioAsset': 'audio/rain.mp3',
-      'duration': '10 min',
-    },
-    {
-      'name': 'Ocean Waves',
-      'description': 'Calming ocean sounds',
-      'icon': Icons.waves,
-      'color': BellaColors.accent,
-      'audioAsset': 'audio/waves.mp3',
-      'duration': '10 min',
-    },
-    {
-      'name': 'Forest Night',
-      'description': 'Crickets and wind',
-      'icon': Icons.forest,
-      'color': BellaColors.success,
-      'audioAsset': 'audio/ghaba.mp3',
-      'duration': '10 min',
-    },
-    {
-      'name': 'White Noise',
-      'description': 'Blocks distractions',
-      'icon': Icons.volume_up,
-      'color': BellaColors.textSecondary,
-      'audioAsset': 'audio/whitenoise.mp3',
-      'duration': '10 min',
-    },
-    {
-      'name': 'Piano Melodies',
-      'description': 'Soft piano for sleep',
-      'icon': Icons.music_note,
-      'color': BellaColors.primary,
-      'audioAsset': 'audio/piano.mp3',
-      'duration': '10 min',
-    },
-    {
-      'name': 'Tibetan Bowl',
-      'description': 'Healing frequencies',
-      'icon': Icons.self_improvement,
-      'color': BellaColors.warning,
-      'audioAsset': 'audio/tibetbowls.mp3',
-      'duration': '10 min',
-    },
+  // ── Sound catalogue ────────────────────────────────────────────────────────
+  static const List<_Sound> _sounds = [
+    _Sound(
+        name: 'Rainfall',
+        description: 'Gentle rain',
+        icon: Icons.water_drop,
+        accent: Color(0xFF49B884),
+        asset: 'audio/rain.mp3'),
+    _Sound(
+        name: 'Ocean Waves',
+        description: 'Open water',
+        icon: Icons.waves,
+        accent: Color(0xFF2E9E6B),
+        asset: 'audio/waves.mp3'),
+    _Sound(
+        name: 'Forest Night',
+        description: 'Crickets & wind',
+        icon: Icons.forest,
+        accent: Color(0xFF55C28C),
+        asset: 'audio/ghaba.mp3'),
+    _Sound(
+        name: 'White Noise',
+        description: 'Block distractions',
+        icon: Icons.blur_on,
+        accent: Color(0xFF6E756D),
+        asset: 'audio/whitenoise.mp3'),
+    _Sound(
+        name: 'Piano',
+        description: 'Soft melodies',
+        icon: Icons.music_note,
+        accent: Color(0xFFE2734B),
+        asset: 'audio/piano.mp3'),
+    _Sound(
+        name: 'Tibetan Bowl',
+        description: 'Healing tones',
+        icon: Icons.self_improvement,
+        accent: Color(0xFFEAAE49),
+        asset: 'audio/tibetbowls.mp3'),
   ];
+
+  // ── Timer options ──────────────────────────────────────────────────────────
+  static const List<_TimerOption> _timerOptions = [
+    _TimerOption('15 min', 15),
+    _TimerOption('30 min', 30),
+    _TimerOption('45 min', 45),
+    _TimerOption('60 min', 60),
+    _TimerOption('Always on', null),
+  ];
+
+  // ── Player service ───────────────────────────────────────────────────────
+  // Playback, the mixer slots, and the sleep timer all now live in this
+  // app-wide singleton instead of on this State — see
+  // sleep_sounds_player_service.dart for why. Everything below is a thin
+  // getter/wrapper over it so the rest of this file (build methods etc.)
+  // didn't need to change.
+  final SleepSoundsPlayerService _svc = SleepSoundsPlayerService();
+
+  _TimerOption get _selectedTimer => _timerOptions.firstWhere(
+        (o) => o.minutes == _svc.selectedTimerMinutes,
+        orElse: () => _timerOptions[1],
+      );
+  int get _timerSecondsLeft => _svc.timerSecondsLeft;
+
+  // ── Mixer state — max 2 simultaneous sounds ────────────────────────────────
+  // slot 0 = primary, slot 1 = secondary (optional)
+  List<String?> get _slotSound => _svc.slotSound; // sound name in each slot
+  List<double> get _slotVolume => _svc.slotVolume; // 0.0–1.0
+  List<bool> get _slotPlaying => _svc.slotPlaying;
+  List<DateTime?>? get _slotStart => _svc.slotStart;
+
+  // Convenience: which sounds are currently active in any slot.
+  bool _isActive(String name) => _svc.isActive(name);
+  bool _isPlaying(String name) => _svc.isPlaying(name);
+  int _slotOf(String name) => _svc.slotOf(name);
+
+  // ── Recommendation ─────────────────────────────────────────────────────────
+  String? _recommendedSound;
+  String? _recommendReason;
+
+  // ── UI state ───────────────────────────────────────────────────────────────
+  bool _isDisposed = false;
+
+  // ── Session tracking (for Bella logging) ─────────────────────────────────
+  // Records when playback first starts so elapsed minutes can be computed
+  // when the user stops. Only set while something is playing.
+  DateTime? _sessionStartedAt;
+
+  /// When true, sounds keep playing if the screen turns off, the user
+  /// switches to another feature (or screen) in the app, or backgrounds the
+  /// app entirely — instead of auto-pausing. Persisted per-user via Bella.
+  bool get _playInBackground => _svc.playInBackground;
+
+  // Animation for the now-playing panel slide-in.
+  late AnimationController _panelController;
+  late Animation<Offset> _panelSlide;
+
+  // ── Pulse animation for active icon ───────────────────────────────────────
+  late AnimationController _pulseController;
+  late Animation<double> _pulse;
+
+  // ── Scroll ─────────────────────────────────────────────────────────────────
+  final ScrollController _scrollCtrl = ScrollController();
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Init / dispose
+  // ─────────────────────────────────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _initAudioPlayer();
+    _svc.init();
+    _svc.addListener(_onServiceChanged);
+
+    _panelController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 320));
+    _panelSlide = Tween<Offset>(
+      begin: const Offset(0, 1),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _panelController, curve: Curves.easeOut));
+
+    // If sounds are already playing — e.g. the user left this screen
+    // earlier with "Play in background" on, then came back — open the
+    // now-playing panel immediately rather than animating in.
+    if (_svc.anyActive) _panelController.value = 1.0;
+
+    _pulseController = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 1400))
+      ..repeat(reverse: true);
+    _pulse = Tween<double>(begin: 1.0, end: 1.12).animate(
+        CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut));
+
+    _computeRecommendation();
   }
 
-  void _initAudioPlayer() {
-    _audioPlayer = AudioPlayer()..setReleaseMode(ReleaseMode.stop);
-    _setupAudioListeners();
-  }
+  /// Called whenever playback/mixer/timer state changes in the singleton —
+  /// keeps this screen's UI in sync, keeps the now-playing panel's slide
+  /// animation in sync, and tracks session start/end for Bella logging.
+  void _onServiceChanged() {
+    if (_isDisposed || !mounted) return;
 
-  void _setupAudioListeners() {
-    _audioPlayer.onDurationChanged.listen((duration) {
-      if (!_isDisposed && mounted) {
-        setState(() {
-          _duration = duration;
-        });
-      }
-    });
-
-    _audioPlayer.onPositionChanged.listen((position) {
-      if (!_isDisposed && mounted) {
-        setState(() {
-          _position = position;
-        });
-      }
-    });
-
-    _audioPlayer.onPlayerStateChanged.listen((state) {
-      if (!_isDisposed && mounted) {
-        setState(() {
-          _isPlaying = state == PlayerState.playing;
-        });
-      }
-    });
-
-    _audioPlayer.onPlayerComplete.listen((_) {
-      if (!_isDisposed && mounted) {
-        setState(() {
-          _isPlaying = false;
-          _position = Duration.zero;
-        });
-      }
-    });
-  }
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive) {
-      _pauseIfPlaying();
+    // Session tracking: stamp start time when playback first becomes active;
+    // log to Bella when playback transitions from active → fully stopped.
+    if (_svc.anyPlaying) {
+      _sessionStartedAt ??= DateTime.now();
+    } else if (!_svc.anyActive && _sessionStartedAt != null) {
+      _logSleepSoundsSession();
     }
-  }
 
-  void _pauseIfPlaying() async {
-    if (_isPlaying) {
-      try {
-        await _audioPlayer.pause();
-        if (!_isDisposed && mounted) {
-          setState(() {
-            _isPlaying = false;
-          });
-        }
-      } catch (_) {}
-    }
-  }
-
-  void _playSound(String soundName, String assetPath) async {
-    try {
-      if (_currentlyPlaying == soundName && _isPlaying) {
-        await _audioPlayer.pause();
-        if (!_isDisposed && mounted) {
-          setState(() {
-            _isPlaying = false;
-          });
-        }
-        return;
-      }
-
-      if (_currentlyPlaying != soundName) {
-        await _audioPlayer.stop();
-        await _audioPlayer.play(AssetSource(assetPath));
-        if (!_isDisposed && mounted) {
-          setState(() {
-            _currentlyPlaying = soundName;
-            _position = Duration.zero;
-            _isPlaying = true;
-            _startTime = DateTime.now();
-          });
-        }
-      } else {
-        await _audioPlayer.resume();
-        if (!_isDisposed && mounted) {
-          setState(() {
-            _isPlaying = true;
-            _startTime ??= DateTime.now();
-          });
-        }
-      }
-    } catch (_) {
-      if (!_isDisposed && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Error playing audio'),
-            backgroundColor: BellaColors.danger,
-          ),
-        );
-      }
-    }
-  }
-
-  void _togglePlayPause() async {
-    if (_isPlaying) {
-      await _audioPlayer.pause();
-      if (!_isDisposed && mounted) {
-        setState(() {
-          _isPlaying = false;
-        });
+    setState(() {});
+    if (_svc.anyActive) {
+      if (_panelController.status != AnimationStatus.forward &&
+          _panelController.status != AnimationStatus.completed) {
+        _panelController.forward();
       }
     } else {
-      await _audioPlayer.resume();
-      if (!_isDisposed && mounted) {
-        setState(() {
-          _isPlaying = true;
-          _startTime ??= DateTime.now();
-        });
+      if (_panelController.status != AnimationStatus.reverse &&
+          _panelController.status != AnimationStatus.dismissed) {
+        _panelController.reverse();
       }
     }
   }
 
-  void _stopAllSounds() async {
-    try {
-      await _audioPlayer.stop();
-
-      if (_currentlyPlaying != null && _startTime != null) {
-        final duration = DateTime.now().difference(_startTime!).inSeconds;
-        if (duration > 30) {
-          _trackSleepSoundUsage(_currentlyPlaying!, duration);
-        }
-      }
-
-      if (!_isDisposed && mounted) {
-        setState(() {
-          _currentlyPlaying = null;
-          _isPlaying = false;
-          _position = Duration.zero;
-          _startTime = null;
-        });
-      }
-    } catch (_) {}
-  }
-
-  void _trackSleepSoundUsage(String soundName, int durationSeconds) {
-    _dataStorage.saveSleepSoundsSession(
-      soundName: soundName,
-      durationSeconds: durationSeconds,
-      timestamp: DateTime.now(),
-      relaxationScore: _calculateRelaxationScore(durationSeconds),
-    );
-
-    _dataStorage.updateDailyGoal(
-      goalType: 'relaxation',
-      progress: durationSeconds / 60.0,
-      target: 15.0,
-      date: DateTime.now(),
-    );
-  }
-
-  double _calculateRelaxationScore(int duration) {
-    if (duration > 600) return 1.0;
-    if (duration > 300) return 0.7;
-    if (duration > 60) return 0.4;
-    return 0.1;
-  }
-
-  void _seekForward() async {
-    final newPosition = _position + const Duration(seconds: 10);
-    if (newPosition <= _duration) {
-      await _audioPlayer.seek(newPosition);
-    }
-  }
-
-  void _seekBackward() async {
-    final newPosition = _position - const Duration(seconds: 10);
-    if (newPosition >= Duration.zero) {
-      await _audioPlayer.seek(newPosition);
-    }
-  }
-
-  void _seekToPosition(double value) async {
-    final position = Duration(seconds: (value * _duration.inSeconds).toInt());
-    await _audioPlayer.seek(position);
-  }
-
-  String _formatDuration(Duration duration) {
-    String twoDigits(int n) => n.toString().padLeft(2, '0');
-    final hours = duration.inHours;
-    final minutes = duration.inMinutes.remainder(60);
-    final seconds = duration.inSeconds.remainder(60);
-
-    if (hours > 0) {
-      return '${twoDigits(hours)}:${twoDigits(minutes)}:${twoDigits(seconds)}';
-    }
-    return '${twoDigits(minutes)}:${twoDigits(seconds)}';
+  /// Logs the completed sleep-sounds session to Bella so it shows up in
+  /// Insights, achievements, and the wellness score. Only logs sessions
+  /// of at least 1 minute to avoid phantom entries from quick taps.
+  void _logSleepSoundsSession() {
+    final started = _sessionStartedAt;
+    _sessionStartedAt = null;
+    if (started == null) return;
+    final minutes = DateTime.now().difference(started).inMinutes;
+    if (minutes < 1) return;
+    _bella.logSession('sleep_sounds', minutes);
   }
 
   @override
   void dispose() {
     _isDisposed = true;
-    WidgetsBinding.instance.removeObserver(this);
-    _stopAllSounds();
-    _audioPlayer.dispose();
+    _svc.removeListener(_onServiceChanged);
+    _panelController.dispose();
+    _pulseController.dispose();
+    _scrollCtrl.dispose();
+    // "Play in background" governs leaving this screen too, not just OS
+    // backgrounding — if it's off, leaving (even just to do a check-in)
+    // stops playback, matching the original behaviour. If it's on, the
+    // singleton keeps the players running after this State is gone.
+    if (!_svc.playInBackground) {
+      _logSleepSoundsSession(); // log elapsed time before stopping
+      _svc.stopAllAndClose();
+    }
     super.dispose();
   }
 
-  Widget _buildTipTile(String text, IconData icon) {
-    return Row(
-      children: [
-        const SizedBox(width: 2),
-        Icon(icon, size: 16, color: BellaColors.secondary),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(
-              fontSize: 13,
-              color: BellaColors.textSecondary,
+  /// Toggle the "play in background" preference and persist it. Also
+  /// governs whether playback survives navigating away from this screen —
+  /// see dispose() above.
+  Future<void> _setPlayInBackground(bool value) =>
+      _svc.setPlayInBackground(value);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Audio helpers — thin wrappers over SleepSoundsPlayerService.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Future<void> _selectSound(String name) async {
+    final sound = _sounds.firstWhere((s) => s.name == name);
+    await _svc.selectSound(name, sound.asset);
+  }
+
+  Future<void> _removeSound(String name) => _svc.removeSound(name);
+
+  Future<void> _toggleSlotPlayPause(int slot) => _svc.toggleSlotPlayPause(slot);
+
+  Future<void> _setSlotVolume(int slot, double v) =>
+      _svc.setSlotVolume(slot, v);
+
+  bool get _anyPlaying => _svc.anyPlaying;
+  bool get _anyActive => _svc.anyActive;
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Sleep timer — thin wrappers over SleepSoundsPlayerService.
+  // ─────────────────────────────────────────────────────────────────────────
+
+  void _stopTimer() => _svc.stopTimer();
+
+  Future<void> _stopAllAndClose() => _svc.stopAllAndClose();
+
+  String _fmtTimer(int secs) {
+    final m = (secs ~/ 60).toString().padLeft(2, '0');
+    final s = (secs % 60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  void _selectTimer(_TimerOption option) =>
+      _svc.setSelectedTimerMinutes(option.minutes);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Recommendation
+  // ─────────────────────────────────────────────────────────────────────────
+
+  void _computeRecommendation() {
+    final checkin = _bella.lastCheckin;
+    final lastSleep = _bella.lastNightSleep;
+    final conditions = UserService().currentUserObject?.chronicDiseases ?? [];
+    final hour = DateTime.now().hour;
+
+    // If the user already did breathwork or meditation tonight, they're
+    // already in a parasympathetic state — favour gentle, immersive sounds
+    // that extend that calm rather than stimulating ones.
+    final breathworkToday = _bella.sessionsToday('breathwork');
+    final meditationMinToday = _bella.sessionMinutesToday('meditation');
+    final alreadyWindingDown = breathworkToday > 0 || meditationMinToday >= 5;
+
+    if (alreadyWindingDown) {
+      // Carry the calm forward with ocean waves or forest night.
+      final hour = DateTime.now().hour;
+      if (hour >= 20 || hour < 6) {
+        _recommendedSound = 'Ocean Waves';
+        _recommendReason =
+            'You\'ve already wound down with practice — ocean waves will carry that calm into sleep.';
+      } else {
+        _recommendedSound = 'Forest Night';
+        _recommendReason =
+            'Great session earlier — soft naturals keep the relaxation going.';
+      }
+      return;
+    }
+
+    if (checkin != null && checkin.stress >= 4) {
+      _recommendedSound = 'Tibetan Bowl';
+      _recommendReason =
+          'High stress — healing tones calm your nervous system.';
+    } else if (lastSleep != null && lastSleep.quality <= 2) {
+      _recommendedSound = 'Ocean Waves';
+      _recommendReason = 'Poor recent sleep — ocean waves promote deeper rest.';
+    } else if (conditions.contains('Hypertension') ||
+        conditions.contains('Heart Disease')) {
+      _recommendedSound = 'Rainfall';
+      _recommendReason = 'Rain sounds lower heart rate naturally.';
+    } else if (conditions.contains('Asthma')) {
+      _recommendedSound = 'Forest Night';
+      _recommendReason = 'Soft naturals support relaxed breathing.';
+    } else if (hour >= 21 || hour < 6) {
+      _recommendedSound = 'Piano';
+      _recommendReason = 'Soft piano is ideal for winding down this late.';
+    } else if (checkin != null && checkin.energy <= 2) {
+      _recommendedSound = 'White Noise';
+      _recommendReason = 'White noise blocks distractions for low-energy rest.';
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Build
+  // ─────────────────────────────────────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.embedded) return _buildBody();
+    return Scaffold(
+      backgroundColor: SageColors.linen,
+      appBar: AppBar(
+        title: Text('Sleep Sounds', style: SageText.headline()),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          if (_anyActive)
+            TextButton.icon(
+              onPressed: () async {
+                _stopTimer();
+                await _stopAllAndClose();
+              },
+              icon: Icon(Icons.stop_rounded, size: 16, color: SageColors.clay),
+              label: Text('Stop all',
+                  style: TextStyle(fontSize: 13, color: SageColors.clay)),
             ),
+        ],
+      ),
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    return Stack(
+      children: [
+        // ── Main scrollable content ──────────────────────────────────────
+        SingleChildScrollView(
+          controller: _scrollCtrl,
+          physics: const BouncingScrollPhysics(),
+          padding: EdgeInsets.fromLTRB(20, 8, 20, _anyActive ? 220 : 32),
+          child: Reveal(
+            size: RevealSize.large,
+            child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Recommendation chip
+              if (_recommendedSound != null) _buildRecommendationChip(),
+              const SizedBox(height: 16),
+
+              // Section label
+              _sectionLabel('SOUNDS'),
+              const SizedBox(height: 12),
+
+              // Sound picker — horizontal scroll
+              _buildSoundPicker(),
+              const SizedBox(height: 24),
+
+              // Mixer (only when 2 sounds active)
+              if (_slotSound[0] != null && _slotSound[1] != null) ...[
+                _sectionLabel('MIXER'),
+                const SizedBox(height: 12),
+                _buildMixer(),
+                const SizedBox(height: 24),
+              ],
+
+              // Sleep timer
+              _sectionLabel('SLEEP TIMER'),
+              const SizedBox(height: 10),
+              _buildTimerPills(),
+              const SizedBox(height: 28),
+
+              // Tips
+              _sectionLabel('WIND-DOWN TIPS'),
+              const SizedBox(height: 12),
+              _buildTipsCard(),
+            ],
+            ),
+          ),
+        ),
+
+        // ── Now-playing panel (slides up from bottom) ────────────────────
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: SlideTransition(
+            position: _panelSlide,
+            child: _buildNowPlayingPanel(),
           ),
         ),
       ],
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final currentSound = _sleepSounds.firstWhere(
-      (sound) => sound['name'] == _currentlyPlaying,
-      orElse: () => _sleepSounds[0],
-    );
+  // ─────────────────────────────────────────────────────────────────────────
+  // Recommendation chip
+  // ─────────────────────────────────────────────────────────────────────────
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Sleep Sounds'),
-        actions: [
-          if (_isPlaying)
-            IconButton(
-              onPressed: _stopAllSounds,
-              icon: const Icon(Icons.stop),
-              tooltip: 'Stop all sounds',
+  Widget _buildRecommendationChip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: SageColors.moss.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: SageColors.moss.withValues(alpha: 0.2)),
+      ),
+      child: Row(children: [
+        Icon(Icons.auto_awesome_rounded, color: SageColors.moss, size: 15),
+        const SizedBox(width: 8),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: TextStyle(
+                  fontSize: 12.5, color: SageColors.moss, height: 1.4),
+              children: [
+                TextSpan(
+                  text: '$_recommendedSound — ',
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+                TextSpan(text: _recommendReason),
+              ],
             ),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Sound picker
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildSoundPicker() {
+    return SizedBox(
+      height: 134,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: _sounds.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (_, i) => _buildSoundCard(_sounds[i]),
+      ),
+    );
+  }
+
+  Widget _buildSoundCard(_Sound sound) {
+    final active = _isActive(sound.name);
+    final playing = _isPlaying(sound.name);
+    final recommended = sound.name == _recommendedSound;
+    final accent = sound.accent;
+
+    return Pressable(
+      onTap: () => _selectSound(sound.name),
+      child: AnimatedContainer(
+        duration: SageMotion.valueChange,
+        curve: Curves.easeOut,
+        width: 100,
+        decoration: BoxDecoration(
+          color: active ? accent.withValues(alpha: 0.14) : SageColors.card,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: active
+                ? accent
+                : recommended
+                    ? accent.withValues(alpha: 0.45)
+                    : SageColors.line,
+            width: active ? 2.0 : 1.0,
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Icon circle with optional pulse
+            active && playing
+                ? AnimatedBuilder(
+                    animation: _pulse,
+                    builder: (_, child) => Transform.scale(
+                      scale: _pulse.value,
+                      child: child,
+                    ),
+                    child: _soundIconCircle(sound, active, accent, size: 48),
+                  )
+                : _soundIconCircle(sound, active, accent, size: 48),
+
+            const SizedBox(height: 10),
+
+            // "For you" badge
+            if (recommended && !active)
+              Container(
+                margin: const EdgeInsets.only(bottom: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'For you',
+                  style: TextStyle(
+                      fontSize: 8.5,
+                      color: accent,
+                      fontWeight: FontWeight.w700),
+                ),
+              ),
+
+            Text(
+              sound.name,
+              textAlign: TextAlign.center,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                color: active ? accent : SageColors.ink,
+                height: 1.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _soundIconCircle(_Sound sound, bool active, Color accent,
+      {required double size}) {
+    return Stack(
+      alignment: Alignment.bottomRight,
+      children: [
+        Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            color: active
+                ? accent.withValues(alpha: 0.22)
+                : accent.withValues(alpha: 0.10),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(sound.icon, color: accent, size: size * 0.45),
+        ),
+        if (active)
+          Container(
+            width: 18,
+            height: 18,
+            decoration: BoxDecoration(
+              color: accent,
+              shape: BoxShape.circle,
+              border: Border.all(color: SageColors.card, width: 1.5),
+            ),
+            child: Icon(
+              _isPlaying(sound.name) ? Icons.pause : Icons.play_arrow,
+              color: Colors.white,
+              size: 10,
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Mixer
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildMixer() {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+      decoration: BoxDecoration(
+        color: SageColors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: SageColors.line),
+      ),
+      child: Column(
+        children: [
+          for (int slot = 0; slot < 2; slot++)
+            if (_slotSound[slot] != null) _buildMixerRow(slot),
         ],
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: BellaColors.appGradient,
-        ),
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(24, 10, 24, 16),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Sleep Better',
+    );
+  }
+
+  Widget _buildMixerRow(int slot) {
+    final name = _slotSound[slot]!;
+    final sound = _sounds.firstWhere((s) => s.name == name);
+    final accent = sound.accent;
+
+    return Padding(
+      padding: slot == 0 ? const EdgeInsets.only(bottom: 12) : EdgeInsets.zero,
+      child: Row(
+        children: [
+          // Icon chip
+          Container(
+            width: 34,
+            height: 34,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(sound.icon, color: accent, size: 16),
+          ),
+          const SizedBox(width: 10),
+
+          // Name + volume slider
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name,
                     style: TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      color: BellaColors.textPrimary,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                        color: SageColors.ink)),
+                const SizedBox(height: 4),
+                SliderTheme(
+                  data: SliderThemeData(
+                    trackHeight: 3,
+                    thumbShape:
+                        const RoundSliderThumbShape(enabledThumbRadius: 6),
+                    overlayShape:
+                        const RoundSliderOverlayShape(overlayRadius: 12),
+                    activeTrackColor: accent,
+                    inactiveTrackColor: SageColors.line,
+                    thumbColor: accent,
+                    overlayColor: accent.withValues(alpha: 0.15),
+                  ),
+                  child: Slider(
+                    min: 0.0,
+                    max: 1.0,
+                    value: _slotVolume[slot],
+                    onChanged: (v) => _setSlotVolume(slot, v),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Play/pause + remove
+          Row(children: [
+            Pressable(
+              onTap: () => _toggleSlotPlayPause(slot),
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  _slotPlaying[slot] ? Icons.pause : Icons.play_arrow,
+                  color: accent,
+                  size: 15,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Pressable(
+              onTap: () => _removeSound(name),
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: BoxDecoration(
+                  color: SageColors.clay.withValues(alpha: 0.08),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.close, color: SageColors.clay, size: 14),
+              ),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Timer pills
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildTimerPills() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _timerOptions.map((opt) {
+        final selected = _selectedTimer.label == opt.label;
+        return Pressable(
+          onTap: () => _selectTimer(opt),
+          child: AnimatedContainer(
+            duration: SageMotion.valueChange,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: selected ? SageColors.moss : SageColors.card,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: selected ? SageColors.moss : SageColors.line,
+              ),
+            ),
+            child: Text(
+              opt.label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w600,
+                color: selected ? SageColors.linen : SageColors.inkSoft,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Now-playing panel
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildNowPlayingPanel() {
+    if (!_anyActive) return const SizedBox.shrink();
+
+    // Use the primary slot for the panel's accent colour.
+    final primaryName = _slotSound[0] ?? _slotSound[1];
+    final primarySound = primaryName != null
+        ? _sounds.firstWhere((s) => s.name == primaryName,
+            orElse: () => _sounds[0])
+        : _sounds[0];
+    final accent = primarySound.accent;
+    final secondaryName =
+        _slotSound[1] != null && _slotSound[0] != null ? _slotSound[1] : null;
+
+    // Build label: "Rainfall" or "Rainfall + Ocean Waves"
+    final labelParts = [_slotSound[0], _slotSound[1]]
+        .where((n) => n != null)
+        .map((n) => n!)
+        .toList();
+    final label = labelParts.join(' + ');
+
+    return Container(
+      decoration: BoxDecoration(
+        color: SageColors.card,
+        border: Border(top: BorderSide(color: SageColors.line)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 16,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Drag handle
+          Container(
+            width: 36,
+            height: 4,
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              color: SageColors.line,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+
+          // Header row: icon + label + timer countdown + stop
+          Row(
+            children: [
+              // Art circle
+              Container(
+                width: 46,
+                height: 46,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(primarySound.icon, color: accent, size: 22),
+              ),
+              const SizedBox(width: 12),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      label,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: SageColors.ink),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 2),
+                    // Timer countdown or "Playing"
+                    _timerSecondsLeft > 0
+                        ? Row(children: [
+                            Icon(Icons.timer_outlined,
+                                size: 12, color: SageColors.inkSoft),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Stops in ${_fmtTimer(_timerSecondsLeft)}',
+                              style: TextStyle(
+                                  fontSize: 11.5, color: SageColors.inkSoft),
+                            ),
+                          ])
+                        : Text(
+                            _anyPlaying ? 'Now playing' : 'Paused',
+                            style: TextStyle(
+                                fontSize: 11.5, color: SageColors.inkSoft),
+                          ),
+                  ],
+                ),
+              ),
+
+              // Stop all button
+              Pressable(
+                onTap: () async {
+                  _stopTimer();
+                  await _stopAllAndClose();
+                },
+                child: Container(
+                  width: 34,
+                  height: 34,
+                  decoration: BoxDecoration(
+                    color: SageColors.clay.withValues(alpha: 0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.stop_rounded,
+                      color: SageColors.clay, size: 18),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 16),
+
+          // Transport controls row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              // Primary play/pause (slot 0)
+              _buildBigPlayButton(
+                slot: 0,
+                accent: accent,
+                icon: primarySound.icon,
+              ),
+              if (secondaryName != null) ...[
+                const SizedBox(width: 14),
+                // Secondary play/pause (slot 1)
+                _buildBigPlayButton(
+                  slot: 1,
+                  accent:
+                      _sounds.firstWhere((s) => s.name == secondaryName).accent,
+                  icon: _sounds.firstWhere((s) => s.name == secondaryName).icon,
+                  small: true,
+                ),
+              ],
+            ],
+          ),
+
+          const SizedBox(height: 14),
+
+          // Play in background toggle — keeps sound running with the
+          // screen off, the app backgrounded, or while using another
+          // feature, instead of auto-pausing.
+          InkWell(
+            onTap: () => _setPlayInBackground(!_playInBackground),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Row(
+                children: [
+                  Icon(Icons.dark_mode_outlined,
+                      size: 16, color: SageColors.inkSoft),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Play in background',
+                      style:
+                          TextStyle(fontSize: 12.5, color: SageColors.inkSoft),
                     ),
                   ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Choose relaxing sounds to unwind and support recovery.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: BellaColors.textSecondary,
-                    ),
+                  Switch(
+                    value: _playInBackground,
+                    onChanged: _setPlayInBackground,
+                    activeThumbColor: accent,
                   ),
                 ],
               ),
             ),
-            Expanded(
-              child: SingleChildScrollView(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                child: Column(
-                  children: [
-                    GridView.builder(
-                      physics: const NeverScrollableScrollPhysics(),
-                      shrinkWrap: true,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        childAspectRatio: 0.86,
-                      ),
-                      itemCount: _sleepSounds.length,
-                      itemBuilder: (context, index) {
-                        final sound = _sleepSounds[index];
-                        final isPlaying =
-                            _currentlyPlaying == sound['name'] && _isPlaying;
+          ),
+        ],
+      ),
+    );
+  }
 
-                        return Container(
-                          decoration: BoxDecoration(
-                            color: BellaColors.surface,
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: BellaColors.divider),
-                          ),
-                          child: Material(
-                            color: Colors.transparent,
-                            child: InkWell(
-                              onTap: () => _playSound(
-                                sound['name'],
-                                sound['audioAsset'],
-                              ),
-                              borderRadius: BorderRadius.circular(20),
-                              child: Padding(
-                                padding: const EdgeInsets.all(16),
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Stack(
-                                      alignment: Alignment.center,
-                                      children: [
-                                        Container(
-                                          width: 58,
-                                          height: 58,
-                                          decoration: BoxDecoration(
-                                            color: (sound['color'] as Color)
-                                                .withOpacity(0.14),
-                                            shape: BoxShape.circle,
-                                          ),
-                                          child: Icon(
-                                            sound['icon'] as IconData,
-                                            color: sound['color'] as Color,
-                                            size: 28,
-                                          ),
-                                        ),
-                                        if (isPlaying)
-                                          Positioned(
-                                            right: 0,
-                                            bottom: 0,
-                                            child: Container(
-                                              width: 24,
-                                              height: 24,
-                                              decoration: BoxDecoration(
-                                                color: BellaColors.danger,
-                                                shape: BoxShape.circle,
-                                                border: Border.all(
-                                                  color: BellaColors.surface,
-                                                  width: 2,
-                                                ),
-                                              ),
-                                              child: const Icon(
-                                                Icons.pause,
-                                                color: Colors.white,
-                                                size: 12,
-                                              ),
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Text(
-                                      sound['name'],
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w700,
-                                        color: sound['color'] as Color,
-                                      ),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      sound['description'],
-                                      textAlign: TextAlign.center,
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        color: BellaColors.textSecondary,
-                                        height: 1.3,
-                                      ),
-                                      maxLines: 2,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 10),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 4,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: (sound['color'] as Color)
-                                            .withOpacity(0.10),
-                                        borderRadius: BorderRadius.circular(20),
-                                      ),
-                                      child: Row(
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          Icon(
-                                            Icons.timer,
-                                            size: 10,
-                                            color: sound['color'] as Color,
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            sound['duration'],
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.w600,
-                                              color: sound['color'] as Color,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 20),
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: BellaColors.surface,
-                        borderRadius: BorderRadius.circular(22),
-                        border: Border.all(
-                          color: BellaColors.secondary.withOpacity(0.18),
-                        ),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
-                            children: [
-                              Icon(
-                                Icons.lightbulb_outline,
-                                color: BellaColors.secondary,
-                                size: 20,
-                              ),
-                              SizedBox(width: 12),
-                              Text(
-                                'Tips for Better Sleep',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w700,
-                                  color: BellaColors.textPrimary,
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 16),
-                          _buildTipTile('Use 30 minutes before bed',
-                              Icons.nightlight_round),
-                          const SizedBox(height: 12),
-                          _buildTipTile(
-                              'Keep volume comfortable', Icons.volume_up),
-                          const SizedBox(height: 12),
-                          _buildTipTile(
-                              'Combine with breathing', Icons.self_improvement),
-                          const SizedBox(height: 12),
-                          _buildTipTile('Follow a consistent sleep schedule',
-                              Icons.schedule),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 90),
-                  ],
-                ),
-              ),
-            ),
-            if (_currentlyPlaying != null)
-              Container(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-                decoration: const BoxDecoration(
-                  color: BellaColors.surface,
-                  border: Border(top: BorderSide(color: BellaColors.divider)),
-                ),
-                child: Column(
-                  children: [
-                    SliderTheme(
-                      data: const SliderThemeData(
-                        trackHeight: 4,
-                        thumbShape:
-                            RoundSliderThumbShape(enabledThumbRadius: 8),
-                        overlayShape:
-                            RoundSliderOverlayShape(overlayRadius: 16),
-                        activeTrackColor: BellaColors.secondary,
-                        inactiveTrackColor: BellaColors.surfaceSoft,
-                        thumbColor: BellaColors.secondary,
-                      ),
-                      child: Slider(
-                        value: _duration.inSeconds > 0
-                            ? _position.inSeconds / _duration.inSeconds
-                            : 0,
-                        onChanged: _seekToPosition,
-                        onChangeEnd: _seekToPosition,
-                      ),
-                    ),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            _formatDuration(_position),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: BellaColors.textMuted,
-                            ),
-                          ),
-                          Text(
-                            _formatDuration(_duration),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: BellaColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Container(
-                          width: 44,
-                          height: 44,
-                          decoration: BoxDecoration(
-                            color: (currentSound['color'] as Color)
-                                .withOpacity(0.12),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            currentSound['icon'] as IconData,
-                            color: currentSound['color'] as Color,
-                            size: 20,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                _currentlyPlaying ?? 'Playing',
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
-                                  color: BellaColors.textPrimary,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                _isPlaying ? 'Now Playing' : 'Paused',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: BellaColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Row(
-                          children: [
-                            IconButton(
-                              onPressed: _seekBackward,
-                              icon: const Icon(
-                                Icons.replay_10,
-                                color: BellaColors.secondary,
-                                size: 26,
-                              ),
-                            ),
-                            Container(
-                              decoration: const BoxDecoration(
-                                color: BellaColors.secondary,
-                                shape: BoxShape.circle,
-                              ),
-                              child: IconButton(
-                                onPressed: _togglePlayPause,
-                                icon: Icon(
-                                  _isPlaying ? Icons.pause : Icons.play_arrow,
-                                  color: Colors.white,
-                                  size: 28,
-                                ),
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: _seekForward,
-                              icon: const Icon(
-                                Icons.forward_10,
-                                color: BellaColors.secondary,
-                                size: 26,
-                              ),
-                            ),
-                            IconButton(
-                              onPressed: _stopAllSounds,
-                              icon: const Icon(
-                                Icons.stop,
-                                color: BellaColors.danger,
-                                size: 26,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-          ],
+  Widget _buildBigPlayButton({
+    required int slot,
+    required Color accent,
+    required IconData icon,
+    bool small = false,
+  }) {
+    final size = small ? 48.0 : 58.0;
+    final inner = small ? 22.0 : 28.0;
+    final playing = _slotPlaying[slot];
+
+    return Pressable(
+      onTap: () => _toggleSlotPlayPause(slot),
+      child: AnimatedContainer(
+        duration: SageMotion.valueChange,
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          color: playing ? accent : accent.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
         ),
+        child: Icon(
+          playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
+          color: playing ? Colors.white : accent,
+          size: inner,
+        ),
+      ),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Tips card
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _buildTipsCard() {
+    final tips = _buildTips();
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: SageColors.card,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: SageColors.line),
+      ),
+      child: Column(
+        children: tips.map((t) {
+          final idx = tips.indexOf(t);
+          return Padding(
+            padding: EdgeInsets.only(top: idx == 0 ? 0 : 12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(t['icon'] as IconData, size: 16, color: SageColors.moss),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    t['text'] as String,
+                    style: TextStyle(
+                        fontSize: 13, color: SageColors.ink, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  List<Map<String, dynamic>> _buildTips() {
+    final tips = <Map<String, dynamic>>[
+      {
+        'text': 'Start 30 min before bed for the best effect.',
+        'icon': Icons.nightlight_round
+      },
+      {
+        'text': 'Keep volume comfortable — not too loud.',
+        'icon': Icons.volume_down_rounded
+      },
+    ];
+    final checkin = _bella.lastCheckin;
+    final conditions = UserService().currentUserObject?.chronicDiseases ?? [];
+
+    // Food timing — most relevant context for a bedtime screen.
+    final now = DateTime.now();
+    final recentHeavyMeal = _bella.getFoodEntries(onDate: now).any((f) {
+      final age = now.difference(f.time).inMinutes;
+      return age <= 180 && (f.calories ?? 0) >= 500;
+    });
+    if (recentHeavyMeal) {
+      tips.insert(0, {
+        'text':
+            'Heavy meal recently — give digestion 30+ min before sleeping to improve sleep depth.',
+        'icon': Icons.restaurant_outlined,
+      });
+    }
+
+    // Session-aware breathwork tip: acknowledge completed sessions, suggest
+    // one only if the user hasn't done any breathwork or meditation today.
+    final breathworkToday = _bella.sessionsToday('breathwork');
+    final meditationMinToday = _bella.sessionMinutesToday('meditation');
+    final hasWindDownSession = breathworkToday > 0 || meditationMinToday >= 5;
+
+    if (hasWindDownSession) {
+      // Affirm rather than suggest — they already did the work.
+      final what = breathworkToday > 0 && meditationMinToday >= 5
+          ? 'Breathwork and meditation'
+          : breathworkToday > 0
+              ? 'Breathwork'
+              : 'Meditation';
+      tips.add({
+        'text':
+            '$what done tonight — the sounds will carry that calm through into sleep.',
+        'icon': Icons.air,
+      });
+    } else if (checkin != null && checkin.stress >= 4) {
+      // High stress + no session yet: nudge toward 4-7-8 specifically.
+      tips.add({
+        'text':
+            'Try 4-7-8 breathing alongside your sound for faster relaxation.',
+        'icon': Icons.air,
+      });
+    } else {
+      // No session, normal stress: gentle suggestion.
+      tips.add({
+        'text': 'Pair with a short breathwork session to wind down faster.',
+        'icon': Icons.air,
+      });
+    }
+
+    if (conditions.contains('Hypertension')) {
+      tips.add({
+        'text':
+            'Lower room temp (18–20 °C) reduces blood pressure during sleep.',
+        'icon': Icons.thermostat_outlined
+      });
+    }
+    if (conditions.contains('Diabetes')) {
+      tips.add({
+        'text':
+            'Check blood glucose before bed — sleep quality affects morning readings.',
+        'icon': Icons.monitor_heart_outlined
+      });
+    }
+    return tips.take(3).toList();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
+  Widget _sectionLabel(String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 1.2,
+        color: SageColors.inkSoft,
       ),
     );
   }

@@ -1,3 +1,4 @@
+// models/health_data.dart (Updated)
 import 'package:flutter/material.dart';
 
 class HealthData {
@@ -41,7 +42,7 @@ class WellnessActivity {
   final Color color;
   final String benefits;
   final String instructions;
-  final bool bmiFriendly;
+  final bool bmiFriendly; // Suitable for all BMI ranges
   final bool beginnerFriendly;
 
   WellnessActivity({

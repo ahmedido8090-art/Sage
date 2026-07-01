@@ -1,21 +1,41 @@
-import 'dart:async';
+// screens/dashboard_screen.dart
+//
+// FIX: Tab switch animation changed from sequential (await reverse → swap →
+// forward) to a simultaneous crossfade driven by AnimatedSwitcher.
+//
+// The old flow:
+//   1. await _tabFadeCtrl.reverse()   ← 220ms during which bottom nav is
+//                                        unresponsive to further taps
+//   2. setState(swap tab)
+//   3. _tabFadeCtrl.forward()
+//
+// This felt sluggish and occasionally swallowed double-taps. The new
+// approach wraps the tab body in an AnimatedSwitcher keyed on _currentIndex,
+// so Flutter handles the crossfade automatically with no await and no
+// blocking. The AnimationController is removed entirely.
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../models/health_data.dart';
-import '../services/bluetooth_service.dart';
-import '../services/user_service.dart';
 import '../services/wellness_quote_service.dart';
-import '../services/data_storage_service.dart';
-import '../theme/bella_theme.dart';
-import '../widgets/device_status_card.dart';
-import '../widgets/health_card.dart';
-import 'breathwork_screen.dart';
-import 'insights_screen.dart';
+import '../services/wellness_score_service.dart';
+import '../services/user_service.dart';
+import '../services/bluetooth_service.dart';
+import '../services/bella_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/page_transitions.dart';
+import '../widgets/sage_hero_card.dart';
+import '../widgets/metric_tile.dart';
+import '../widgets/wellness_activity_tile.dart';
+import '../widgets/quote_section.dart';
+import '../widgets/sage_bottom_nav.dart';
+import '../widgets/shimmer_loader.dart';
 import 'profile_screen.dart';
-import 'sleep_sounds_screen.dart';
-import 'walking_screen.dart';
 import 'wellness_screen.dart';
-import 'nutrition_log_screen.dart';
+import 'insights_screen.dart';
+import 'pure_plate_screen.dart';
+import 'zzzify_screen.dart';
+import 'chronic_care_screen.dart';
+import 'daily_checkin_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -27,6 +47,9 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
 
+  final ValueNotifier<int> _wellnessReloadSignal = ValueNotifier(0);
+  final ValueNotifier<int> _insightsReloadSignal = ValueNotifier(0);
+
   HealthData healthData = HealthData(
     heartRate: 0,
     steps: 0,
@@ -35,15 +58,26 @@ class _DashboardScreenState extends State<DashboardScreen> {
     sleepHours: 0,
   );
 
+  bool _initialLoading = true;
+
   late Quote currentQuote;
   final BluetoothService _bt = BluetoothService.instance;
+  final BellaService _bella = BellaService();
   late final VoidCallback _connListener;
-  StreamSubscription<HealthData>? _dataSubscription;
 
   @override
   void initState() {
     super.initState();
-    currentQuote = WellnessQuoteService.getRandomQuote();
+
+    currentQuote = WellnessQuoteService.getQuoteForState(
+      lastCheckin: _bella.lastCheckin,
+      lastSleep: _bella.lastNightSleep,
+      avgSleepQuality: _bella.averageSleepQuality(),
+      totalActivityMinutesToday: _bella.sessionMinutesToday('meditation') +
+          _bella.sessionMinutesToday('walking') +
+          _bella.sessionsToday('breathwork') * 5 +
+          _bella.sessionMinutesToday('sleep_sounds'),
+    );
 
     _connListener = () {
       if (!mounted) return;
@@ -54,43 +88,85 @@ class _DashboardScreenState extends State<DashboardScreen> {
           isConnected: _bt.isConnected.value,
           calories: healthData.calories,
           sleepHours: healthData.sleepHours,
-          spo2: healthData.spo2,
-          temperature: healthData.temperature,
-          batteryLevel: healthData.batteryLevel,
         );
       });
     };
-
     _bt.isConnected.addListener(_connListener);
 
-    _dataSubscription = _bt.dataStream.listen((data) {
+    _bt.dataStream.listen((data) {
       if (!mounted) return;
       setState(() {
+        _initialLoading = false;
         healthData = HealthData(
           heartRate: data.heartRate,
           steps: data.steps,
           isConnected: data.isConnected,
           calories: data.calories,
           sleepHours: healthData.sleepHours,
-          spo2: data.spo2,
-          temperature: data.temperature,
-          batteryLevel: data.batteryLevel,
         );
       });
+    });
+
+    Future.delayed(const Duration(milliseconds: 1400), () {
+      if (mounted) setState(() => _initialLoading = false);
     });
   }
 
   @override
   void dispose() {
     _bt.isConnected.removeListener(_connListener);
-    _dataSubscription?.cancel();
     super.dispose();
   }
 
   String get _userDisplayName {
     final user = UserService().currentUserObject;
-    if (user != null) return user.username;
-    return UserService().currentUser ?? 'User';
+    return user?.username ?? UserService().currentUser ?? 'User';
+  }
+
+  double get _bmi {
+    final user = UserService().currentUserObject;
+    if (user != null && user.height > 0 && user.weight > 0) {
+      final h = user.height / 100;
+      return user.weight / (h * h);
+    }
+    return 22.5;
+  }
+
+  String get _bmiCategory {
+    final bmi = _bmi;
+    if (bmi < 18.5) return 'Underweight';
+    if (bmi < 25) return 'Normal';
+    if (bmi < 30) return 'Overweight';
+    return 'Obese';
+  }
+
+  void _refreshFromBella() {
+    if (!mounted) return;
+    setState(() {
+      currentQuote = WellnessQuoteService.getQuoteForState(
+        lastCheckin: _bella.lastCheckin,
+        lastSleep: _bella.lastNightSleep,
+        avgSleepQuality: _bella.averageSleepQuality(),
+        totalActivityMinutesToday: _bella.sessionMinutesToday('meditation') +
+            _bella.sessionMinutesToday('walking') +
+            _bella.sessionsToday('breathwork') * 5 +
+            _bella.sessionMinutesToday('sleep_sounds'),
+      );
+    });
+  }
+
+  String _timeOfDayGreeting() {
+    final hour = DateTime.now().hour;
+    if (hour < 12) return 'morning';
+    if (hour < 17) return 'afternoon';
+    return 'evening';
+  }
+
+  String _heartRateStatusLabel(int hr) {
+    if (hr == 0) return 'No reading yet';
+    if (hr > 100) return 'Elevated';
+    if (hr < 60) return 'Resting · low';
+    return 'Resting · steady';
   }
 
   void _handleConnectPress() async {
@@ -98,7 +174,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       await _bt.disconnect();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Bella Band disconnected.')),
+        const SnackBar(
+          content: Text('Sage Band Disconnected'),
+          backgroundColor: Colors.red,
+        ),
       );
     } else {
       _showDevicePicker();
@@ -108,42 +187,134 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _showDevicePicker() {
     showModalBottomSheet(
       context: context,
-      backgroundColor: BellaColors.surface,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (_) => _DevicePickerSheet(btService: _bt),
+      builder: (ctx) => _DevicePickerSheet(btService: _bt),
     );
   }
 
-  void _refreshQuote() {
-    setState(() {
-      currentQuote = WellnessQuoteService.getRandomQuote();
-    });
+  List<String> _flaggedConditionsToday() {
+    final conditions =
+        UserService().currentUserObject?.chronicDiseases ?? [];
+    final flagged = <String>[];
+    for (final cond in conditions) {
+      final readings = _bella.getReadings(condition: cond);
+      if (readings.isEmpty) continue;
+      if (WellnessScoreService.isReadingFlagged(cond, readings.first)) {
+        flagged.add(cond);
+      }
+    }
+    return flagged;
+  }
+
+  String _chronicCareSubtitle() {
+    final conditions =
+        UserService().currentUserObject?.chronicDiseases ?? [];
+    if (conditions.isEmpty) return 'Log & manage';
+
+    int stalestDays = 0;
+    String? stalestCondition;
+    for (final cond in conditions) {
+      final readings = _bella.getReadings(condition: cond);
+      if (readings.isEmpty) {
+        stalestDays = 999;
+        stalestCondition = cond;
+      } else {
+        final d = DateTime.now().difference(readings.first.time).inDays;
+        if (d > stalestDays) {
+          stalestDays = d;
+          stalestCondition = cond;
+        }
+      }
+    }
+
+    final flagged = _flaggedConditionsToday();
+    if (flagged.isNotEmpty) {
+      if (flagged.length == 1) return '⚠ ${flagged.first} reading flagged';
+      final label = flagged.length == 2
+          ? '${flagged[0]} & ${flagged[1]}'
+          : '${flagged.sublist(0, flagged.length - 1).join(', ')} & ${flagged.last}';
+      return '⚠ $label flagged';
+    }
+
+    if (stalestDays == 999 && stalestCondition != null) {
+      return 'No reading logged for $stalestCondition yet';
+    }
+    if (stalestDays >= 7 && stalestCondition != null) {
+      return '$stalestCondition: ${stalestDays}d since last reading';
+    }
+    if (stalestDays >= 3 && stalestCondition != null) {
+      return '$stalestCondition: log a reading soon';
+    }
+
+    final anyReading = conditions
+        .any((cond) => _bella.getReadings(condition: cond).isNotEmpty);
+    return anyReading ? 'Last reading in range' : 'Log & manage';
+  }
+
+  String _purePlateSubtitle() {
+    final water = _bella.todayWaterMl();
+    final foodCount = _bella.getFoodEntries(onDate: DateTime.now()).length;
+    if (water == 0 && foodCount == 0) return 'Plan & hydrate';
+    if (water > 0) return '${(water / 1000).toStringAsFixed(1)}L logged today';
+    return '$foodCount meal${foodCount == 1 ? '' : 's'} logged';
+  }
+
+  String _zzzifySubtitle() {
+    final last = _bella.lastNightSleep;
+    if (last == null) return 'Track & wind down';
+    final q = last.quality;
+    if (q >= 4) return 'Last night: great sleep';
+    if (q == 3) return 'Last night: decent sleep';
+    return 'Last night: poor sleep';
+  }
+
+  String _checkinSubtitle() {
+    if (_bella.hasCheckedInToday()) {
+      final c = _bella.lastCheckin;
+      if (c == null) return 'Checked in today';
+      final score = c.wellbeingScore;
+      if (score >= 7) return 'Feeling good today';
+      if (score >= 4.5) return 'Feeling okay today';
+      return 'Low wellbeing today';
+    }
+    return 'How are you?';
+  }
+
+  void _push(Widget screen) {
+    Navigator.push(context, slideUpRoute(screen))
+        .then((_) => _refreshFromBella());
+  }
+
+  void _switchTab(int i) {
+    if (i == _currentIndex) return;
+    setState(() => _currentIndex = i);
+    if (i == 0) _refreshFromBella();
+    if (i == 1) _wellnessReloadSignal.value++;
+    if (i == 2) _insightsReloadSignal.value++;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Row(
-          children: [
-            Icon(Icons.nightlight_round, color: BellaColors.primary, size: 28),
-            SizedBox(width: 10),
-            Text(
-              'Bella',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: BellaColors.textPrimary,
-                letterSpacing: 0.8,
-              ),
-            ),
-          ],
+      backgroundColor: SageColors.linen,
+      body: AnimatedSwitcher(
+        // Crossfade between tabs with no blocking await.
+        // The key on each child forces AnimatedSwitcher to treat index
+        // changes as a new widget, triggering the fade.
+        duration: const Duration(milliseconds: 180),
+        switchInCurve: Curves.easeOut,
+        switchOutCurve: Curves.easeIn,
+        child: KeyedSubtree(
+          key: ValueKey(_currentIndex),
+          child: _buildCurrentScreen(),
         ),
       ),
-      body: _buildCurrentScreen(),
-      bottomNavigationBar: _buildBottomNavigationBar(),
+      bottomNavigationBar: SageBottomNav(
+        currentIndex: _currentIndex,
+        onTap: _switchTab,
+      ),
     );
   }
 
@@ -152,9 +323,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 0:
         return _buildDashboardTab();
       case 1:
-        return const WellnessScreen();
+        return WellnessScreen(reloadSignal: _wellnessReloadSignal);
       case 2:
-        return const InsightsScreen();
+        return InsightsScreen(reloadSignal: _insightsReloadSignal);
       case 3:
         return const ProfileScreen();
       default:
@@ -163,200 +334,196 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildDashboardTab() {
-    final safeHeart = healthData.heartRate;
-    final safeSteps = healthData.steps;
+    final int safeHeart = healthData.heartRate is double
+        ? (healthData.heartRate as double).toInt()
+        : healthData.heartRate;
+    final int safeSteps = healthData.steps is double
+        ? (healthData.steps as double).toInt()
+        : healthData.steps;
 
-    return Container(
-      decoration: const BoxDecoration(gradient: BellaColors.appGradient),
+    return SafeArea(
+      bottom: false,
       child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Welcome back, $_userDisplayName',
-              style: const TextStyle(
-                color: BellaColors.textSecondary,
-                fontSize: 15,
-              ),
-            ),
-            const SizedBox(height: 4),
-            const Text(
-              'Your wellness dashboard',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                color: BellaColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 20),
-            DeviceStatusCard(
-              isConnected: healthData.isConnected,
-              batteryLevel: healthData.batteryLevel,
-              heartRate: safeHeart.toDouble(),
-              onConnectPressed: _handleConnectPress,
-            ),
-            const SizedBox(height: 18),
-            FutureBuilder<Map<String, int>>(
-              future: DataStorageService().getTodayNutrition(
-                userId: UserService().currentUser ?? '',
-              ),
-              builder: (ctx, snapshot) {
-                // We don't need the water value anymore – we just show the card as a launcher
-                return GridView(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 0.88,
-                  ),
-                  children: [
-                    HealthCard(
-                      icon: Icons.favorite,
-                      title: 'Heart Rate',
-                      value: '$safeHeart',
-                      unit: 'bpm',
-                      color: BellaColors.danger,
-                      iconColor: BellaColors.danger,
-                    ),
-                    HealthCard(
-                      icon: Icons.directions_walk,
-                      title: 'Steps',
-                      value: '$safeSteps',
-                      unit: '',
-                      color: BellaColors.success,
-                      iconColor: BellaColors.success,
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => WalkingScreen(
-                              initialHeartRate: safeHeart,
-                              initialSteps: safeSteps,
-                            ),
-                          ),
-                        );
-                      },
-                      showActionButton: true,
-                      actionIcon: Icons.open_in_new,
-                    ),
-                    HealthCard(
-                      icon: Icons.local_fire_department,
-                      title: 'Calories',
-                      value: '${healthData.calories.toInt()}',
-                      unit: 'kcal',
-                      color: BellaColors.warning,
-                      iconColor: BellaColors.warning,
-                    ),
-                    // Custom card for Nutriva – bigger icon and text, no number
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const NutritionLogScreen(),
-                          ),
-                        );
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: BellaColors.surface,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: BellaColors.divider),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.18),
-                              blurRadius: 16,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: BellaColors.secondary.withOpacity(0.12),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Icon(
-                                Icons.restaurant,
-                                color: BellaColors.secondary,
-                                size: 34,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'Nutriva',
-                              style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                color: BellaColors.textPrimary,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            const Text(
-                              'Track nutrition',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: BellaColors.textSecondary,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
+            // ── Header row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('sage', style: SageText.wordmark()),
+                GestureDetector(
+                  onTap: () => _switchTab(3),
+                  child: CircleAvatar(
+                    radius: 17,
+                    backgroundColor: SageColors.moss,
+                    child: Text(
+                      _userDisplayName.isNotEmpty
+                          ? _userDisplayName[0].toUpperCase()
+                          : '?',
+                      style: TextStyle(
+                        color: SageColors.linen,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
                       ),
                     ),
-                  ],
-                );
-              },
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 18),
+            Text(
+              'Good ${_timeOfDayGreeting()}, $_userDisplayName',
+              style: TextStyle(color: SageColors.inkSoft, fontSize: 13),
+            ),
+            const SizedBox(height: 4),
+            Text('Health Sync Hub', style: SageText.headline()),
+            const SizedBox(height: 20),
+
+            // ── Hero card or shimmer
+            if (_initialLoading)
+              const ShimmerHeroCard()
+            else
+              SageHeroCard(
+                isConnected: healthData.isConnected,
+                batteryLevel: healthData.batteryLevel,
+                heartRate: safeHeart,
+                subLabel: _heartRateStatusLabel(safeHeart),
+                onConnectPressed: _handleConnectPress,
+              ),
+
+            const SizedBox(height: 20),
+
+            // ── Metric tiles or shimmers
+            if (_initialLoading)
+              Row(
+                children: const [
+                  Expanded(child: ShimmerMetricTile()),
+                  SizedBox(width: 10),
+                  Expanded(child: ShimmerMetricTile()),
+                ],
+              )
+            else
+              Row(
+                children: [
+                  Expanded(
+                    child: MetricTile(
+                      icon: const Icon(Icons.directions_walk),
+                      value: '$safeSteps',
+                      label: 'Steps today',
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: MetricTile(
+                      icon: const Icon(Icons.local_fire_department),
+                      value: healthData.calories.toStringAsFixed(0),
+                      label: 'Calories',
+                    ),
+                  ),
+                ],
+              ),
+
+            const SizedBox(height: 24),
+
+            Text(
+              'BELLA',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,
+                color: SageColors.inkSoft,
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            // ── Bella activity tiles
+            if (_initialLoading)
+              SizedBox(
+                height: 126,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: const [
+                    ShimmerActivityTile(),
+                    SizedBox(width: 12),
+                    ShimmerActivityTile(),
+                    SizedBox(width: 12),
+                    ShimmerActivityTile(),
+                  ],
+                ),
+              )
+            else
+              SizedBox(
+                height: 126,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  children: [
+                    WellnessActivityTile(
+                      icon: Icons.water_drop_outlined,
+                      title: 'PurePlate',
+                      subtitle: _purePlateSubtitle(),
+                      accent: SageColors.clay,
+                      onTap: () => _push(const PurePlateScreen()),
+                    ),
+                    const SizedBox(width: 12),
+                    WellnessActivityTile(
+                      icon: Icons.nights_stay_outlined,
+                      title: 'ZZZify',
+                      subtitle: _zzzifySubtitle(),
+                      accent: SageColors.moss,
+                      onTap: () => _push(const ZZZifyScreen()),
+                    ),
+                    if ((UserService().currentUserObject?.chronicDiseases ?? [])
+                        .isNotEmpty) ...[
+                      const SizedBox(width: 12),
+                      WellnessActivityTile(
+                        icon: Icons.favorite_border,
+                        title: 'Chronic Care',
+                        subtitle: _chronicCareSubtitle(),
+                        accent: SageColors.sage,
+                        onTap: () => _push(const ChronicCareScreen()),
+                      ),
+                    ],
+                    const SizedBox(width: 12),
+                    WellnessActivityTile(
+                      icon: Icons.mood_outlined,
+                      title: 'Daily Check-in',
+                      subtitle: _checkinSubtitle(),
+                      accent: SageColors.amber,
+                      onTap: () => _push(const DailyCheckinScreen()),
+                    ),
+                  ],
+                ),
+              ),
+
+            const SizedBox(height: 24),
+            QuoteSection(
+              text: currentQuote.text,
+              author: currentQuote.author,
+              onRefresh: () => setState(() {
+                currentQuote = WellnessQuoteService.getQuoteForState(
+                  lastCheckin: _bella.lastCheckin,
+                  lastSleep: _bella.lastNightSleep,
+                  avgSleepQuality: _bella.averageSleepQuality(),
+                  totalActivityMinutesToday:
+                      _bella.sessionMinutesToday('meditation') +
+                          _bella.sessionMinutesToday('walking') +
+                          _bella.sessionsToday('breathwork') * 5 +
+                          _bella.sessionMinutesToday('sleep_sounds'),
+                );
+              }),
+            ),
           ],
         ),
       ),
     );
   }
-
-  Widget _buildBottomNavigationBar() {
-    return NavigationBar(
-      selectedIndex: _currentIndex,
-      onDestinationSelected: (index) {
-        setState(() => _currentIndex = index);
-      },
-      destinations: const [
-        NavigationDestination(
-          icon: Icon(Icons.dashboard_outlined),
-          selectedIcon: Icon(Icons.dashboard),
-          label: 'Home',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.spa_outlined),
-          selectedIcon: Icon(Icons.spa),
-          label: 'Wellness',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.insights_outlined),
-          selectedIcon: Icon(Icons.insights),
-          label: 'Insights',
-        ),
-        NavigationDestination(
-          icon: Icon(Icons.person_outline),
-          selectedIcon: Icon(Icons.person),
-          label: 'Profile',
-        ),
-      ],
-    );
-  }
 }
 
+// ── Device picker bottom sheet ─────────────────────────────────────────────
 class _DevicePickerSheet extends StatefulWidget {
   final BluetoothService btService;
-
   const _DevicePickerSheet({required this.btService});
 
   @override
@@ -378,134 +545,88 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 420,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            const Text(
-              'Select your band',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: BellaColors.textPrimary,
-              ),
+    return Container(
+      padding: const EdgeInsets.all(20),
+      height: 400,
+      color: SageColors.linen,
+      child: Column(
+        children: [
+          Text('Select Your Band', style: SageText.headline()),
+          const SizedBox(height: 10),
+          if (Platform.isAndroid)
+            Text(
+              "If you don't see your device, pair it in Android Bluetooth Settings first.",
+              style: TextStyle(color: SageColors.inkSoft, fontSize: 12),
+              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 10),
-            if (Platform.isAndroid)
-              const Text(
-                "If you don't see your device, pair it in Android Bluetooth Settings first.",
-                style: TextStyle(
-                  color: BellaColors.textSecondary,
-                  fontSize: 12,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            const SizedBox(height: 10),
-            const Divider(color: BellaColors.divider),
-            Expanded(
-              child: StreamBuilder<List<SageDevice>>(
-                stream: widget.btService.scanResults,
-                initialData: const [],
-                builder: (context, snapshot) {
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: Text(
-                        'Error: ${snapshot.error}',
-                        style: const TextStyle(color: BellaColors.danger),
-                      ),
-                    );
-                  }
-
-                  final devices = snapshot.data ?? [];
-                  if (devices.isEmpty) {
-                    return const Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(),
-                          SizedBox(height: 16),
-                          Text(
-                            'Scanning for devices...',
-                            style: TextStyle(color: BellaColors.textSecondary),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
-
-                  return ListView.builder(
-                    itemCount: devices.length,
-                    itemBuilder: (_, i) {
-                      final dev = devices[i];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 10),
-                        decoration: BoxDecoration(
-                          color: BellaColors.surfaceAlt,
-                          borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: BellaColors.divider),
-                        ),
-                        child: ListTile(
-                          leading: Icon(
-                            dev.isBle
-                                ? Icons.bluetooth
-                                : Icons.bluetooth_searching,
-                            color: BellaColors.secondary,
-                          ),
-                          title: Text(
-                            dev.name.isEmpty ? 'Unknown Device' : dev.name,
-                            style: const TextStyle(
-                              color: BellaColors.textPrimary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          subtitle: Text(
-                            dev.id,
-                            style: const TextStyle(
-                              color: BellaColors.textMuted,
-                            ),
-                          ),
-                          trailing: const Icon(
-                            Icons.chevron_right,
-                            color: BellaColors.textSecondary,
-                          ),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _connectTo(dev);
-                          },
-                        ),
-                      );
-                    },
+          const Divider(),
+          Expanded(
+            child: StreamBuilder<List<SageDevice>>(
+              stream: widget.btService.scanResults,
+              initialData: const [],
+              builder: (context, snapshot) {
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+                final devices = snapshot.data ?? [];
+                if (devices.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(color: SageColors.moss),
+                        const SizedBox(height: 16),
+                        const Text('Scanning for devices...'),
+                      ],
+                    ),
                   );
-                },
-              ),
+                }
+                return ListView.builder(
+                  itemCount: devices.length,
+                  itemBuilder: (ctx, i) {
+                    final dev = devices[i];
+                    return ListTile(
+                      leading: Icon(
+                        dev.isBle
+                            ? Icons.bluetooth
+                            : Icons.bluetooth_searching,
+                        color: SageColors.moss,
+                      ),
+                      title:
+                          Text(dev.name.isEmpty ? 'Unknown Device' : dev.name),
+                      subtitle: Text(dev.id),
+                      trailing: const Icon(Icons.chevron_right),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _connectTo(dev);
+                      },
+                    );
+                  },
+                );
+              },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   void _connectTo(SageDevice device) async {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Connecting to ${device.name}...')),
-    );
-
+        SnackBar(content: Text('Connecting to ${device.name}...')));
     try {
       await widget.btService.connect(device);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Connected successfully.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: const Text('Connected successfully!'),
+        backgroundColor: SageColors.moss,
+      ));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Connection failed: $e'),
-          backgroundColor: BellaColors.danger,
-        ),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Connection failed: $e'),
+        backgroundColor: SageColors.clay,
+      ));
     }
   }
 }

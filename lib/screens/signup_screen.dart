@@ -1,7 +1,13 @@
+// screens/signup_screen.dart
 import 'package:flutter/material.dart';
-import '../models/user.dart';
 import '../services/user_service.dart';
-import '../theme/bella_theme.dart';
+import '../services/bella_service.dart';
+import '../services/care_rules.dart';
+import '../models/user.dart';
+import '../theme/app_theme.dart';
+import '../theme/motion.dart';
+import '../utils/page_transitions.dart';
+import '../widgets/reveal.dart';
 import 'login_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -24,417 +30,504 @@ class _SignupScreenState extends State<SignupScreen> {
   String _selectedGender = 'Male';
   bool _isLoading = false;
   bool _obscurePassword = true;
-  bool _obscureConfirmPassword = true;
+  bool _obscureConfirm = true;
   String? _errorMessage;
-
-  // Expanded chronic diseases list (20 conditions)
-  final List<String> _availableDiseases = [
-    'Hypertension',
-    'Diabetes (Type 2)',
-    'Asthma',
-    'Anemia',
-    'High Cholesterol',
-    'Arthritis',
-    'Osteoporosis',
-    'Chronic Kidney Disease',
-    'Depression',
-    'Anxiety Disorder',
-    'Migraine',
-    'Thyroid Disorder (Hypothyroidism)',
-    'Gout',
-    'IBS (Irritable Bowel Syndrome)',
-    'GERD (Acid Reflux)',
-    'COPD',
-    'Psoriasis',
-    'Eczema',
-    'Fibromyalgia',
-    'Sleep Apnea'
-  ];
-  final List<String> _selectedDiseases = [];
-
-  void _toggleDisease(String disease) {
-    setState(() {
-      if (_selectedDiseases.contains(disease)) {
-        _selectedDiseases.remove(disease);
-      } else {
-        _selectedDiseases.add(disease);
-      }
-    });
-  }
+  final Set<String> _selectedConditions = {};
 
   void _handleSignup() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_formKey.currentState!.validate()) {
+      if (_passwordController.text != _confirmPasswordController.text) {
+        setState(() => _errorMessage = 'Passwords do not match');
+        return;
+      }
 
-    if (_passwordController.text != _confirmPasswordController.text) {
-      setState(() => _errorMessage = 'Passwords do not match');
-      return;
-    }
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+      await Future.delayed(const Duration(milliseconds: 800));
 
-    await Future.delayed(const Duration(milliseconds: 800));
-
-    final user = User(
-      username: _usernameController.text.trim(),
-      password: _passwordController.text.trim(),
-      age: int.tryParse(_ageController.text) ?? 0,
-      gender: _selectedGender,
-      height: double.tryParse(_heightController.text) ?? 0.0,
-      weight: double.tryParse(_weightController.text) ?? 0.0,
-      chronicDiseases: List.from(_selectedDiseases),
-    );
-
-    final result = UserService().register(user);
-
-    setState(() => _isLoading = false);
-
-    if (!mounted) return;
-
-    if (result == 'Registration successful!') {
-      _usernameController.clear();
-      _passwordController.clear();
-      _confirmPasswordController.clear();
-      _ageController.clear();
-      _heightController.clear();
-      _weightController.clear();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Your Bella account is ready.')),
+      // Create user object
+      final user = User(
+        username: _usernameController.text.trim(),
+        password: _passwordController.text.trim(),
+        age: int.tryParse(_ageController.text) ?? 0,
+        gender: _selectedGender,
+        height: double.tryParse(_heightController.text) ?? 0.0,
+        weight: double.tryParse(_weightController.text) ?? 0.0,
+        chronicDiseases: _selectedConditions.toList(),
       );
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()),
-      );
-    } else {
-      setState(() => _errorMessage = result);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result), backgroundColor: BellaColors.danger),
-      );
+
+      // Register user
+      final result = UserService().register(user);
+
+      // Seed sensible Bella targets immediately after registration so new
+      // users don't see "0/0" progress rings or divide-by-zero guards on
+      // their very first session. Conditions-aware water target comes from
+      // CareRules; activity targets use the same defaults the rest of the
+      // app falls back to, but stored explicitly so they can be overridden
+      // later without changing code-level fallbacks everywhere.
+      if (result == 'Registration successful!') {
+        // Log in temporarily so BellaService resolves the correct user key.
+        UserService().authenticate(user.username, user.password);
+        final h = user.height / 100;
+        final bmi = h > 0 ? user.weight / (h * h) : 22.5;
+        final plan = CareRules.generatePlan(
+          bmi: bmi,
+          conditions: user.chronicDiseases,
+        );
+        await BellaService().saveTargets({
+          'waterMl': plan.dailyWaterMlTarget,
+          'calorieTarget': 2000,
+          'meditationMinutes': 10,
+          'walkMinutes': 30,
+          'breathworkSessions': 1,
+        });
+        // Clear the session so they land on the login screen as expected.
+        UserService().logout();
+      }
+
+      setState(() => _isLoading = false);
+
+      if (mounted) {
+        if (result == "Registration successful!") {
+          // Clear form
+          _usernameController.clear();
+          _passwordController.clear();
+          _confirmPasswordController.clear();
+          _ageController.clear();
+          _heightController.clear();
+          _weightController.clear();
+
+          // Show success and go to login
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result),
+              backgroundColor: SageColors.moss,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+
+          // Go back to login screen
+          Navigator.pushReplacement(
+            context,
+            fadeRoute(const LoginScreen()),
+          );
+        } else {
+          setState(() => _errorMessage = result);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result),
+              backgroundColor: SageColors.clay,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      }
     }
   }
 
   void _clearError() {
-    if (_errorMessage != null) setState(() => _errorMessage = null);
+    if (_errorMessage != null) {
+      setState(() => _errorMessage = null);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: BellaColors.appGradient),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 480),
-                child: Container(
-                  padding: const EdgeInsets.all(24),
+      backgroundColor: SageColors.linen,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: SageColors.moss),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Reveal(
+        size: RevealSize.large,
+        child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Tell us about yourself', style: SageText.headline()),
+              const SizedBox(height: 6),
+              Text(
+                'Create your Sage Health account',
+                style: TextStyle(color: SageColors.inkSoft, fontSize: 13.5),
+              ),
+
+              // Error message
+              if (_errorMessage != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: BellaColors.surface.withOpacity(0.96),
-                    borderRadius: BorderRadius.circular(28),
-                    border: Border.all(color: BellaColors.divider),
+                    color: SageColors.clay.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: SageColors.clay.withValues(alpha: 0.3)),
                   ),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.arrow_back,
-                              color: BellaColors.textPrimary),
+                  child: Row(
+                    children: [
+                      Icon(Icons.error_outline, color: SageColors.clay, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _errorMessage!,
+                          style: TextStyle(color: SageColors.clay),
                         ),
-                        const SizedBox(height: 4),
-                        Text('Create your Bella account',
-                            style: theme.textTheme.headlineMedium),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Set up your profile, body metrics, and wellness preferences.',
-                          style: theme.textTheme.bodyMedium,
-                        ),
-                        const SizedBox(height: 20),
-                        if (_errorMessage != null) ...[
-                          Container(
-                            padding: const EdgeInsets.all(14),
-                            decoration: BoxDecoration(
-                              color: BellaColors.danger.withOpacity(0.12),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
-                                  color: BellaColors.danger.withOpacity(0.3)),
-                            ),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.error_outline,
-                                    color: BellaColors.danger, size: 20),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                    child: Text(_errorMessage!,
-                                        style: const TextStyle(
-                                            color: BellaColors.danger))),
-                                IconButton(
-                                  onPressed: _clearError,
-                                  icon: const Icon(Icons.close,
-                                      size: 18, color: BellaColors.danger),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                        ],
-                        _sectionLabel('Credentials'),
-                        const SizedBox(height: 10),
-                        _buildTextField(
-                          controller: _usernameController,
-                          label: 'Username',
-                          icon: Icons.person_outline,
-                          validator: (v) => v == null || v.isEmpty
-                              ? 'Username is required'
-                              : (v.length < 3
-                                  ? 'Username must be at least 3 characters'
-                                  : null),
-                        ),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          controller: _passwordController,
-                          label: 'Password',
-                          icon: Icons.lock_outline,
-                          isPassword: true,
-                          obscureText: _obscurePassword,
-                          onTogglePassword: () => setState(
-                              () => _obscurePassword = !_obscurePassword),
-                          validator: (v) => v == null || v.isEmpty
-                              ? 'Password is required'
-                              : (v.length < 6
-                                  ? 'Password must be at least 6 characters'
-                                  : null),
-                        ),
-                        const SizedBox(height: 16),
-                        _buildTextField(
-                          controller: _confirmPasswordController,
-                          label: 'Confirm Password',
-                          icon: Icons.lock_reset,
-                          isPassword: true,
-                          obscureText: _obscureConfirmPassword,
-                          onTogglePassword: () => setState(() =>
-                              _obscureConfirmPassword =
-                                  !_obscureConfirmPassword),
-                          validator: (v) => v == null || v.isEmpty
-                              ? 'Please confirm your password'
-                              : (v != _passwordController.text
-                                  ? 'Passwords do not match'
-                                  : null),
-                        ),
-                        const SizedBox(height: 24),
-                        _sectionLabel('Body Metrics'),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildTextField(
-                                controller: _ageController,
-                                label: 'Age',
-                                icon: Icons.calendar_today_outlined,
-                                inputType: TextInputType.number,
-                                validator: (v) {
-                                  if (v == null || v.isEmpty)
-                                    return 'Age is required';
-                                  final age = int.tryParse(v);
-                                  return (age == null || age < 13 || age > 120)
-                                      ? 'Enter a valid age'
-                                      : null;
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: DropdownButtonFormField<String>(
-                                value: _selectedGender,
-                                dropdownColor: BellaColors.surfaceAlt,
-                                style: const TextStyle(
-                                    color: BellaColors.textPrimary),
-                                decoration: const InputDecoration(
-                                  labelText: 'Gender',
-                                  prefixIcon: Icon(Icons.wc),
-                                ),
-                                items: const [
-                                  DropdownMenuItem(
-                                      value: 'Male', child: Text('Male')),
-                                  DropdownMenuItem(
-                                      value: 'Female', child: Text('Female')),
-                                ],
-                                onChanged: (value) =>
-                                    setState(() => _selectedGender = value!),
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: _buildTextField(
-                                controller: _heightController,
-                                label: 'Height (cm)',
-                                icon: Icons.height,
-                                inputType: TextInputType.number,
-                                validator: (v) {
-                                  if (v == null || v.isEmpty)
-                                    return 'Height required';
-                                  final height = double.tryParse(v);
-                                  return (height == null ||
-                                          height < 50 ||
-                                          height > 250)
-                                      ? '50-250 cm'
-                                      : null;
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: _buildTextField(
-                                controller: _weightController,
-                                label: 'Weight (kg)',
-                                icon: Icons.monitor_weight_outlined,
-                                inputType: TextInputType.number,
-                                validator: (v) {
-                                  if (v == null || v.isEmpty)
-                                    return 'Weight required';
-                                  final weight = double.tryParse(v);
-                                  return (weight == null ||
-                                          weight < 20 ||
-                                          weight > 300)
-                                      ? '20-300 kg'
-                                      : null;
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        _sectionLabel(
-                            'Chronic Diseases (optional, multi‑select)'),
-                        const SizedBox(height: 8),
-                        Container(
-                          height: 200,
-                          decoration: BoxDecoration(
-                            color: BellaColors.surfaceAlt,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: BellaColors.divider),
-                          ),
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.all(12),
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: _availableDiseases.map((disease) {
-                                final isSelected =
-                                    _selectedDiseases.contains(disease);
-                                return FilterChip(
-                                  label: Text(disease),
-                                  selected: isSelected,
-                                  onSelected: (_) => _toggleDisease(disease),
-                                  backgroundColor: BellaColors.surface,
-                                  selectedColor:
-                                      BellaColors.primary.withOpacity(0.3),
-                                  labelStyle: TextStyle(
-                                    color: isSelected
-                                        ? BellaColors.primary
-                                        : BellaColors.textSecondary,
-                                    fontSize: 12,
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 30),
-                        ElevatedButton(
-                          onPressed: _isLoading ? null : _handleSignup,
-                          child: _isLoading
-                              ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(
-                                      color: Colors.white, strokeWidth: 2.2))
-                              : const Text('CREATE ACCOUNT'),
-                        ),
-                        const SizedBox(height: 18),
-                        Center(
-                          child: Wrap(
-                            children: [
-                              Text('Already have an account? ',
-                                  style: theme.textTheme.bodyMedium),
-                              GestureDetector(
-                                onTap: () => Navigator.pushReplacement(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const LoginScreen()),
-                                ),
-                                child: const Text(
-                                  'Sign In',
-                                  style: TextStyle(
-                                      color: BellaColors.primary,
-                                      fontWeight: FontWeight.w700),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, size: 16),
+                        onPressed: _clearError,
+                        color: SageColors.clay,
+                      ),
+                    ],
                   ),
                 ),
+              ],
+
+              const SizedBox(height: 28),
+
+              _sectionLabel('CREDENTIALS'),
+              const SizedBox(height: 10),
+              _buildTextField(
+                controller: _usernameController,
+                label: 'Username',
+                icon: Icons.person,
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Username is required';
+                  }
+                  if (value.length < 3) {
+                    return 'Username must be at least 3 characters';
+                  }
+                  return null;
+                },
+                onChanged: (_) => _clearError(),
               ),
-            ),
+              const SizedBox(height: 14),
+              _buildTextField(
+                controller: _passwordController,
+                label: 'Password',
+                icon: Icons.lock,
+                isPassword: true,
+                obscure: _obscurePassword,
+                onToggleObscure: () => setState(() => _obscurePassword = !_obscurePassword),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Password is required';
+                  }
+                  if (value.length < 6) {
+                    return 'Password must be at least 6 characters';
+                  }
+                  return null;
+                },
+                onChanged: (_) => _clearError(),
+              ),
+              const SizedBox(height: 14),
+              _buildTextField(
+                controller: _confirmPasswordController,
+                label: 'Confirm password',
+                icon: Icons.lock,
+                isPassword: true,
+                obscure: _obscureConfirm,
+                onToggleObscure: () => setState(() => _obscureConfirm = !_obscureConfirm),
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please confirm your password';
+                  }
+                  if (value != _passwordController.text) {
+                    return 'Passwords do not match';
+                  }
+                  return null;
+                },
+                onChanged: (_) => _clearError(),
+              ),
+              const SizedBox(height: 28),
+
+              _sectionLabel('BODY METRICS'),
+              const SizedBox(height: 10),
+
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildTextField(
+                      controller: _ageController,
+                      label: 'Age',
+                      icon: Icons.calendar_today,
+                      inputType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Age is required';
+                        }
+                        final age = int.tryParse(value);
+                        if (age == null || age < 13 || age > 120) {
+                          return 'Enter a valid age (13-120)';
+                        }
+                        return null;
+                      },
+                      onChanged: (_) => _clearError(),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: DropdownButtonFormField<String>(
+                      initialValue: _selectedGender,
+                      decoration: _inputDecoration('Gender', Icons.wc),
+                      items: ['Male', 'Female'].map((String value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: (newValue) =>
+                          setState(() => _selectedGender = newValue!),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Gender is required';
+                        }
+                        return null;
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildTextField(
+                      controller: _heightController,
+                      label: 'Height (cm)',
+                      icon: Icons.height,
+                      inputType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Height is required';
+                        }
+                        final height = double.tryParse(value);
+                        if (height == null || height < 50 || height > 250) {
+                          return 'Enter valid height (50-250 cm)';
+                        }
+                        return null;
+                      },
+                      onChanged: (_) => _clearError(),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: _buildTextField(
+                      controller: _weightController,
+                      label: 'Weight (kg)',
+                      icon: Icons.monitor_weight,
+                      inputType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Weight is required';
+                        }
+                        final weight = double.tryParse(value);
+                        if (weight == null || weight < 20 || weight > 300) {
+                          return 'Enter valid weight (20-300 kg)';
+                        }
+                        return null;
+                      },
+                      onChanged: (_) => _clearError(),
+                    ),
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 28),
+
+              _sectionLabel('CHRONIC CONDITIONS (OPTIONAL)'),
+              const SizedBox(height: 4),
+              Text(
+                'Select any that apply — leave blank if none.',
+                style: TextStyle(color: SageColors.inkSoft, fontSize: 12),
+              ),
+              const SizedBox(height: 10),
+              _buildConditionChips(),
+
+              const SizedBox(height: 36),
+
+              SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: _isLoading ? null : _handleSignup,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: SageColors.moss,
+                    foregroundColor: SageColors.linen,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: _isLoading
+                      ? SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(color: SageColors.linen, strokeWidth: 2),
+                        )
+                      : const Text(
+                          'CREATE ACCOUNT',
+                          style: TextStyle(
+                            fontSize: 14.5,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.8,
+                          ),
+                        ),
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Already have an account? ',
+                    style: TextStyle(color: SageColors.inkSoft, fontSize: 13.5),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pushReplacement(
+                        context,
+                        fadeRoute(const LoginScreen()),
+                      );
+                    },
+                    child: Text(
+                      'Sign in',
+                      style: TextStyle(
+                        color: SageColors.moss,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 13.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
+        ), // SingleChildScrollView
+      ), // Reveal
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Text(
+      text,
+      style: TextStyle(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        letterSpacing: 0.5,
+        color: SageColors.inkSoft,
       ),
     );
   }
 
-  Widget _sectionLabel(String text) => Text(
-        text,
-        style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: BellaColors.primary,
-            letterSpacing: 0.2),
-      );
+  Widget _buildConditionChips() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: ChronicConditions.options.map((condition) {
+        final selected = _selectedConditions.contains(condition);
+        return FilterChip(
+          label: Text(condition),
+          selected: selected,
+          onSelected: (value) {
+            setState(() {
+              if (value) {
+                _selectedConditions.add(condition);
+              } else {
+                _selectedConditions.remove(condition);
+              }
+            });
+          },
+          showCheckmark: false,
+          backgroundColor: SageColors.card,
+          selectedColor: SageColors.moss.withValues(alpha: 0.15),
+          side: BorderSide(color: selected ? SageColors.moss : SageColors.line),
+          labelStyle: TextStyle(
+            fontSize: 12.5,
+            color: selected ? SageColors.moss : SageColors.inkSoft,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        );
+      }).toList(),
+    );
+  }
 
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
     required IconData icon,
     bool isPassword = false,
-    bool obscureText = false,
-    VoidCallback? onTogglePassword,
+    bool obscure = false,
+    VoidCallback? onToggleObscure,
     TextInputType inputType = TextInputType.text,
-    required String? Function(String?) validator,
+    required String? Function(String?)? validator,
+    void Function(String)? onChanged,
   }) {
     return TextFormField(
       controller: controller,
-      obscureText: isPassword ? obscureText : false,
+      obscureText: isPassword ? obscure : false,
       keyboardType: inputType,
-      onChanged: (_) => _clearError(),
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-        suffixIcon: isPassword
+      decoration: _inputDecoration(
+        label,
+        icon,
+        suffix: isPassword
             ? IconButton(
-                onPressed: onTogglePassword,
                 icon: Icon(
-                    obscureText ? Icons.visibility_off : Icons.visibility,
-                    color: BellaColors.textMuted),
+                  obscure ? Icons.visibility_outlined : Icons.visibility_off_outlined,
+                  color: SageColors.inkSoft,
+                  size: 19,
+                ),
+                onPressed: onToggleObscure,
               )
             : null,
       ),
       validator: validator,
+      onChanged: onChanged,
+    );
+  }
+
+  InputDecoration _inputDecoration(String label, IconData icon, {Widget? suffix}) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: SageColors.inkSoft),
+      prefixIcon: Icon(icon, color: SageColors.moss, size: 20),
+      suffixIcon: suffix,
+      filled: true,
+      fillColor: SageColors.card,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: SageColors.line),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: SageColors.moss, width: 1.5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: SageColors.clay, width: 1),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: SageColors.clay, width: 1.5),
+      ),
     );
   }
 }

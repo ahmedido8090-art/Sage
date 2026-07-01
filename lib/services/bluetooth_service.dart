@@ -1,13 +1,13 @@
-// services/bluetooth_service.dart (UPDATED FOR NEW ARDUINO FORMAT)
+// services/bluetooth_service.dart
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
-import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart' as fbp;
-import 'package:permission_handler/permission_handler.dart';
+
 import '../models/health_data.dart';
 import 'data_storage_service.dart';
 
@@ -40,7 +40,7 @@ class BluetoothService {
   // --- iOS (BLE) ---
   fbp.BluetoothDevice? _bleDevice;
   fbp.BluetoothCharacteristic? _bleRxChar;
-  StreamSubscription? _bleConnSub;
+  StreamSubscription<fbp.BluetoothConnectionState>? _bleConnSub;
   StreamSubscription<List<int>>? _bleNotifSub;
 
   // --- Scanning & State ---
@@ -58,36 +58,18 @@ class BluetoothService {
   String _buffer = '';
   int _heartRate = 0;
   int _steps = 0;
-  int _calories = 0;
-  double _irValue = 0;
-  int _lastSimulatedSteps = 0;
-  DateTime _lastStepTime = DateTime.now();
-
-  // -----------------------------------------------------------------------
-  // PERMISSIONS (Helper)
-  // -----------------------------------------------------------------------
-  Future<void> requestPermissions() async {
-    if (Platform.isAndroid) {
-      await [
-        Permission.bluetooth,
-        Permission.bluetoothScan,
-        Permission.bluetoothConnect,
-        Permission.location,
-      ].request();
-    } else if (Platform.isIOS) {
-      await Permission.locationWhenInUse.request();
-    }
-  }
 
   // -----------------------------------------------------------------------
   // SCANNING LOGIC
   // -----------------------------------------------------------------------
-  Future<void> startScan() async {
-    await requestPermissions();
 
+  /// Starts scanning for devices compatible with the current platform
+  Future<void> startScan() async {
     if (Platform.isAndroid) {
+      // On Android, we primarily look for paired (bonded) HC-05 devices
       _bluetooth ??= FlutterBluetoothSerial.instance;
 
+      // Check if enabled
       bool? enabled = await _bluetooth!.isEnabled;
       if (enabled != true) await _bluetooth?.requestEnable();
 
@@ -104,20 +86,20 @@ class BluetoothService {
 
         _scanController.add(sageDevices);
       } catch (e) {
+        _scanController.add([]);
         if (kDebugMode) {
           print("Error getting bonded devices: $e");
         }
-        _scanController.add([]);
       }
     } else if (Platform.isIOS) {
+      // On iOS, we scan for BLE peripherals.
+      // FIX: Wait for Bluetooth to be 'ON' before scanning to avoid CBManagerStateUnknown.
       try {
-        if (await fbp.FlutterBluePlus.adapterState.first !=
-            fbp.BluetoothAdapterState.on) {
-          await fbp.FlutterBluePlus.adapterState
-              .where((state) => state == fbp.BluetoothAdapterState.on)
-              .first
-              .timeout(const Duration(seconds: 3));
-        }
+        // Wait up to 3 seconds for the adapter to be ready
+        await fbp.FlutterBluePlus.adapterState
+            .where((state) => state == fbp.BluetoothAdapterState.on)
+            .first
+            .timeout(const Duration(seconds: 3));
       } catch (e) {
         if (kDebugMode) {
           print("Bluetooth adapter not ready or permission denied: $e");
@@ -126,8 +108,10 @@ class BluetoothService {
         return;
       }
 
+      // Clear previous results
       _scanController.add([]);
 
+      // Start scan
       try {
         await fbp.FlutterBluePlus.startScan(
           timeout: const Duration(seconds: 5),
@@ -138,9 +122,14 @@ class BluetoothService {
         }
       }
 
+      // Listen to BLE results and map them to SageDevices
       fbp.FlutterBluePlus.scanResults.listen((results) {
-        final validResults =
-            results.where((r) => r.device.platformName.isNotEmpty).toList();
+        // Filter out devices with no name to keep the list clean
+        final validResults = results
+            .where((r) => r.device.platformName.isNotEmpty)
+            .toList();
+
+        // Sort by signal strength (closest first)
         validResults.sort((a, b) => b.rssi.compareTo(a.rssi));
 
         final sageDevices = validResults.map((r) {
@@ -164,11 +153,13 @@ class BluetoothService {
         await fbp.FlutterBluePlus.stopScan();
       } catch (_) {}
     }
+    // Android getBondedDevices is instantaneous, so no stop needed
   }
 
   // -----------------------------------------------------------------------
   // CONNECTION LOGIC
   // -----------------------------------------------------------------------
+
   Future<void> connect(SageDevice device) async {
     if (isConnected.value) return;
 
@@ -209,9 +200,11 @@ class BluetoothService {
         }
       });
 
+      // Discover Services
       final services = await device.discoverServices();
       fbp.BluetoothCharacteristic? rx;
 
+      // Find a read/notify characteristic (HM-10 / AT-09 generic)
       for (final s in services) {
         for (final c in s.characteristics) {
           if (c.properties.notify || c.properties.read) {
@@ -232,6 +225,7 @@ class BluetoothService {
           if (value.isNotEmpty) _onData(Uint8List.fromList(value));
         });
       } else {
+        // Fallback for read-only
         final value = await rx.read();
         if (value.isNotEmpty) _onData(Uint8List.fromList(value));
       }
@@ -274,165 +268,64 @@ class BluetoothService {
   }
 
   // -----------------------------------------------------------------------
-  // DATA PARSING - UPDATED FOR NEW ARDUINO FORMAT
+  // DATA PARSING
   // -----------------------------------------------------------------------
-  void _onData(Uint8List data) {
-    try {
-      _buffer += utf8.decode(data, allowMalformed: true);
-      if (kDebugMode) {
-        print("📡 RAW DATA: ${String.fromCharCodes(data)}");
-      }
-    } catch (e) {
-      print("Error decoding data: $e");
-    }
 
+  void _onData(Uint8List data) {
+    _buffer += utf8.decode(data, allowMalformed: true);
     int index;
     while ((index = _buffer.indexOf('\n')) != -1) {
       final line = _buffer.substring(0, index).trim();
       _buffer = _buffer.substring(index + 1);
-
       if (line.isEmpty) continue;
-
-      if (kDebugMode) {
-        print("📋 LINE RECEIVED: $line");
-      }
       _parseLine(line);
     }
   }
 
-  void _simulateStepsFromAcceleration(int ax, int ay, int az) {
-    // Simple step simulation from acceleration
-    final magnitude = sqrt(ax * ax + ay * ay + az * az);
-    final timeDiff = DateTime.now().difference(_lastStepTime).inSeconds;
-
-    // If there's significant movement and enough time passed, add a step
-    if (magnitude > 15000 && timeDiff > 1) {
-      _steps++;
-      _lastStepTime = DateTime.now();
-      print("👣 Simulated step from acceleration. Total: $_steps");
-    }
-
-    _lastSimulatedSteps = _steps;
-  }
-
   void _parseLine(String line) {
-    // TRY BOTH FORMATS:
-    // 1. New format: "STEPS:123,IR:50000,BPM:75"
-    // 2. Old format: "AX:123,AY:456,AZ:789,IR:50000,BPM:75"
-
+    // Expected: HR:XX,AX:XXXXX,AY:XXXXX,AZ:XXXXX,GX:XXXXX,GY:XXXXX,GZ:XXXXX,ST:XXXXX
     try {
       final parts = line.split(',');
-      int? bpm;
-      int? ir;
-      int? steps;
-      int? ax, ay, az; // For old format
+      int? hr;
+      int? st;
 
       for (final p in parts) {
         final kv = p.split(':');
         if (kv.length != 2) continue;
-
-        final key = kv[0].trim().toUpperCase();
+        final key = kv[0].trim();
         final value = kv[1].trim();
 
-        if (key == 'BPM' || key == 'HR') {
-          bpm = int.tryParse(value);
-        } else if (key == 'IR') {
-          ir = int.tryParse(value);
-          if (ir != null) _irValue = ir.toDouble();
-        } else if (key == 'STEPS' || key == 'ST') {
-          steps = int.tryParse(value);
-        } else if (key == 'AX') {
-          ax = int.tryParse(value);
-        } else if (key == 'AY') {
-          ay = int.tryParse(value);
-        } else if (key == 'AZ') {
-          az = int.tryParse(value);
-        }
+        if (key == 'HR') hr = int.tryParse(value);
+        if (key == 'ST') st = int.tryParse(value);
       }
 
-      // Update steps (from STEPS if available, or simulate from acceleration)
-      if (steps != null) {
-        _steps = steps;
-      } else if (ax != null && ay != null && az != null) {
-        // Simulate step counting from acceleration (old format fallback)
-        _simulateStepsFromAcceleration(ax!, ay!, az!);
-      }
+      if (hr != null) _heartRate = hr;
+      if (st != null) _steps = st;
 
-      // Update heart rate
-      if (bpm != null && bpm > 0) {
-        _heartRate = bpm;
-      }
-
-      // --- FIXED CALORIE CALCULATION HERE ---
-      // Ensure we calculate using the LATEST _steps value
-      _calories = (_steps * 0.04).toInt();
-      // --------------------------------------
-
-      // Store data if we have valid readings
-      if (bpm != null) {
+      // Store the data persistently
+      if (hr != null) {
         DataStorageService().saveBandData(
-          heartRate: _heartRate,
+          heartRate: hr,
           steps: _steps,
           timestamp: DateTime.now(),
         );
       }
 
-      // Broadcast new data to the app
       _dataController.add(
         HealthData(
           heartRate: _heartRate,
           steps: _steps,
           isConnected: isConnected.value,
-          calories: _calories.toDouble(),
+          calories: _steps * 0.04,
           sleepHours: 0,
-          spo2: 98, // Default value
-          temperature: 36.7, // Default value
-          batteryLevel: 78, // Default value
         ),
       );
-
-      if (kDebugMode) {
-        print("✅ PARSED DATA: HR=$_heartRate, Steps=$_steps, Cal=$_calories");
-      }
-    } catch (e) {
-      print("❌ Error parsing line '$line': $e");
-    }
-  }
-
-  // -----------------------------------------------------------------------
-  // UTILITY METHODS
-  // -----------------------------------------------------------------------
-  Future<void> sendCommand(String command) async {
-    if (!isConnected.value) return;
-
-    try {
-      if (_connection != null && _connection!.isConnected) {
-        _connection!.output.add(Uint8List.fromList(utf8.encode('$command\n')));
-        await _connection!.output.allSent;
-      } else if (_bleRxChar != null) {
-        await _bleRxChar!.write(utf8.encode('$command\n'));
-      }
-    } catch (e) {
-      print("Error sending command: $e");
-    }
-  }
-
-  Future<void> resetStepCounter() async {
-    await sendCommand("RESET_STEPS");
-    _steps = 0;
-    _calories = 0; // Reset calories too
-  }
-
-  Future<void> requestData() async {
-    await sendCommand("GET_DATA");
+    } catch (_) {}
   }
 
   void dispose() {
     _dataController.close();
     disconnect();
     _scanController.close();
-    _readSub?.cancel();
-    _bleConnSub?.cancel();
-    _bleNotifSub?.cancel();
   }
 }

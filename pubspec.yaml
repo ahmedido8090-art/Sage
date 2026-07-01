@@ -1,15 +1,16 @@
-name: bella
-description: "Bella wellness companion app."
-publish_to: "none"
+name: sage
+description: "A new Flutter project."
+publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.3.0 <4.0.0"
+  sdk: '>=3.3.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
   cupertino_icons: ^1.0.8
+  google_fonts: ^6.2.1
   flutter_blue_plus: ^1.33.6
   flutter_bluetooth_serial: ^0.4.0
   shared_preferences: ^2.5.3
@@ -18,14 +19,18 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   audioplayers: 6.5.1
-  provider: ^6.1.5+1
+  
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  # Temporarily remove build_runner until we fix the issues
 
 flutter:
   uses-material-design: true
+  
+  # ADD THIS SECTION FOR ASSETS
   assets:
     - assets/audio/
+    - assets/images/  

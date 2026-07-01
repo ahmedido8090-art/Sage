@@ -1,13 +1,15 @@
+// widgets/health_card.dart
+
 import 'package:flutter/material.dart';
-import '../theme/bella_theme.dart';
+import '../theme/app_theme.dart';
 
 class HealthCard extends StatelessWidget {
   final IconData icon;
   final String title;
   final String value;
   final String unit;
-  final Color color;
-  final Color? iconColor;
+  final Color color; // Background tint color
+  final Color? iconColor; // Specific color for the icon (optional)
   final VoidCallback? onTap;
   final bool showActionButton;
   final IconData? actionIcon;
@@ -19,7 +21,7 @@ class HealthCard extends StatelessWidget {
     required this.value,
     required this.unit,
     required this.color,
-    this.iconColor,
+    this.iconColor, // Added parameter
     this.onTap,
     this.showActionButton = false,
     this.actionIcon,
@@ -27,6 +29,7 @@ class HealthCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Use the provided iconColor, or fallback to the main color
     final effectiveIconColor = iconColor ?? color;
 
     return GestureDetector(
@@ -34,14 +37,13 @@ class HealthCard extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: BellaColors.surface,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: BellaColors.divider),
+          color: SageColors.card,
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.18),
-              blurRadius: 16,
-              offset: const Offset(0, 10),
+              color: Colors.black.withValues(alpha: 0.03),
+              blurRadius: 12,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -53,53 +55,55 @@ class HealthCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: effectiveIconColor.withOpacity(0.12),
+                    // Use the main color for the background tint
+                    color: color.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, color: effectiveIconColor, size: 22),
+                  child: Icon(
+                    icon,
+                    color: effectiveIconColor, // Use the effective icon color
+                    size: 22,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Text(
                   value,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: BellaColors.textPrimary,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: SageColors.moss,
                   ),
                 ),
-                if (unit.isNotEmpty)
-                  Text(
-                    unit,
-                    style: const TextStyle(
-                        fontSize: 12, color: BellaColors.textMuted),
-                  ),
-                const SizedBox(height: 6),
+                Text(
+                  unit,
+                  style: TextStyle(fontSize: 12, color: SageColors.inkSoft),
+                ),
+                const SizedBox(height: 4),
                 Text(
                   title,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
-                    color: BellaColors.textSecondary,
-                    fontWeight: FontWeight.w600,
+                    color: SageColors.inkSoft,
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
             if (showActionButton && actionIcon != null)
               Positioned(
-                top: 2,
-                right: 2,
+                top: 8,
+                right: 8,
                 child: Container(
-                  width: 30,
-                  height: 30,
+                  width: 28,
+                  height: 28,
                   decoration: BoxDecoration(
-                    color: effectiveIconColor.withOpacity(0.12),
+                    color: color.withValues(alpha: 0.1),
                     shape: BoxShape.circle,
                   ),
                   child: IconButton(
+                    icon: Icon(actionIcon, size: 14, color: color),
                     onPressed: onTap,
                     padding: EdgeInsets.zero,
-                    icon: Icon(actionIcon, size: 14, color: effectiveIconColor),
                   ),
                 ),
               ),

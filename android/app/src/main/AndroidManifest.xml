@@ -10,6 +10,16 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
+
+    <!-- Required for Sleep Sounds "Play in background": keeps the CPU
+         awake while audio plays with the screen off (matches stayAwake:
+         true already set on the AudioContext in sleep_sounds_screen.dart),
+         and lets the playback run as a foreground service so Android
+         doesn't kill it shortly after the app is backgrounded. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <application
         android:label="sage"
         android:name="${applicationName}"

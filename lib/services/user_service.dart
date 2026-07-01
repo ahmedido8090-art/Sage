@@ -10,7 +10,8 @@ class UserService {
 
   final Box _credentialsBox = Hive.box('users');
   final Box _userDetailsBox = Hive.box('userDetails');
-
+  final Box _sessionBox = Hive.box('session');
+  
   String? currentUser;
   User? currentUserObject;
 
@@ -19,25 +20,25 @@ class UserService {
     if (_credentialsBox.containsKey(user.username)) {
       return "Username already exists";
     }
-
+    
     _credentialsBox.put(user.username, user.password);
     _userDetailsBox.put(user.username, user.toMap());
-
+    
     return "Registration successful!";
   }
 
   // Authenticate user - returns error message or null if successful
   String? authenticate(String username, String password) {
     final storedPassword = _credentialsBox.get(username);
-
+    
     if (storedPassword == null) {
       return "Username not found. Please sign up first.";
     }
-
+    
     if (storedPassword != password) {
       return "Incorrect password";
     }
-
+    
     final userMap = _userDetailsBox.get(username);
     if (userMap != null && userMap is Map) {
       currentUserObject = User.fromMap(Map<String, dynamic>.from(userMap));
@@ -51,9 +52,9 @@ class UserService {
         weight: 70.0,
       );
     }
-
+    
     currentUser = username;
-
+    
     return null;
   }
 
@@ -77,14 +78,14 @@ class UserService {
   // Update password
   void updatePassword(String username, String newPassword) {
     _credentialsBox.put(username, newPassword);
-
+    
     // Update password in user details
     final userMap = _userDetailsBox.get(username);
     if (userMap != null && userMap is Map) {
       final updatedMap = Map<String, dynamic>.from(userMap);
       updatedMap['password'] = newPassword;
       _userDetailsBox.put(username, updatedMap);
-
+      
       if (currentUser == username && currentUserObject != null) {
         currentUserObject = User.fromMap(updatedMap);
       }
@@ -112,5 +113,34 @@ class UserService {
   void logout() {
     currentUser = null;
     currentUserObject = null;
+    clearPersistedSession();
+  }
+
+  // --- "Keep me logged in" session persistence ---
+
+  // Remembers this username across app restarts. Called from the login
+  // screen only when the "Keep me logged in" checkbox is checked.
+  void persistSession(String username) {
+    _sessionBox.put('rememberedUser', username);
+  }
+
+  // Forgets any remembered session. Called when logging in with "Keep me
+  // logged in" unchecked, and on every explicit logout.
+  void clearPersistedSession() {
+    _sessionBox.delete('rememberedUser');
+  }
+
+  // Restores a remembered session (if any) into currentUser/currentUserObject.
+  // Call once at app startup, before deciding whether to show the login
+  // screen or jump straight to the dashboard.
+  Future<void> restoreSession() async {
+    final remembered = _sessionBox.get('rememberedUser');
+    if (remembered is! String) return;
+
+    final userMap = _userDetailsBox.get(remembered);
+    if (userMap != null && userMap is Map) {
+      currentUserObject = User.fromMap(Map<String, dynamic>.from(userMap));
+      currentUser = remembered;
+    }
   }
 }

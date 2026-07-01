@@ -1,4 +1,4 @@
-// services/data_storage_service.dart - COMPLETE FILE (with user-specific nutrition)
+// services/data_storage_service.dart - COMPREHENSIVE VERSION
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -18,12 +18,8 @@ class DataStorageService {
   static const String _wellnessActivitiesKey = 'sage_wellness_activities';
   static const String _userStatsKey = 'sage_user_stats';
   static const String _dailyGoalsKey = 'sage_daily_goals';
-  // Nutrition logs will be stored per user: 'nutrition_logs_{username}'
 
-  // Helper to get user-specific key
-  String _nutritionKey(String userId) => 'nutrition_logs_$userId';
-
-  // =========================== USER STATISTICS ===========================
+  // --- USER STATISTICS ---
   Future<void> updateUserStats({
     int? totalMeditationMinutes = 0,
     int? totalBreathworkMinutes = 0,
@@ -36,31 +32,27 @@ class DataStorageService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final stats = await getUserStats();
-
+    
     final updatedStats = {
-      'totalMeditationMinutes': (stats['totalMeditationMinutes'] ?? 0) +
-          (totalMeditationMinutes ?? 0),
-      'totalBreathworkMinutes': (stats['totalBreathworkMinutes'] ?? 0) +
-          (totalBreathworkMinutes ?? 0),
-      'totalWalkingMinutes':
-          (stats['totalWalkingMinutes'] ?? 0) + (totalWalkingMinutes ?? 0),
-      'totalSleepSoundsMinutes': (stats['totalSleepSoundsMinutes'] ?? 0) +
-          (totalSleepSoundsMinutes ?? 0),
+      'totalMeditationMinutes': (stats['totalMeditationMinutes'] ?? 0) + (totalMeditationMinutes ?? 0),
+      'totalBreathworkMinutes': (stats['totalBreathworkMinutes'] ?? 0) + (totalBreathworkMinutes ?? 0),
+      'totalWalkingMinutes': (stats['totalWalkingMinutes'] ?? 0) + (totalWalkingMinutes ?? 0),
+      'totalSleepSoundsMinutes': (stats['totalSleepSoundsMinutes'] ?? 0) + (totalSleepSoundsMinutes ?? 0),
       'totalSteps': (stats['totalSteps'] ?? 0) + (totalSteps ?? 0),
       'totalCalories': (stats['totalCalories'] ?? 0) + (totalCalories ?? 0),
       'streakDays': streakDays ?? stats['streakDays'] ?? 0,
-      'lastActivityDate':
-          lastActivityDate?.millisecondsSinceEpoch ?? stats['lastActivityDate'],
+      'lastActivityDate': lastActivityDate?.millisecondsSinceEpoch ?? stats['lastActivityDate'],
       'totalSessions': (stats['totalSessions'] ?? 0) + 1,
       'updatedAt': DateTime.now().millisecondsSinceEpoch,
     };
-
+    
     await prefs.setString(_userStatsKey, jsonEncode(updatedStats));
   }
 
   Future<Map<String, dynamic>> getUserStats() async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getString(_userStatsKey);
+    
     if (data == null) {
       return {
         'totalMeditationMinutes': 0,
@@ -74,112 +66,11 @@ class DataStorageService {
         'lastActivityDate': null,
       };
     }
+    
     return jsonDecode(data);
   }
 
-  // =========================== NUTRITION LOGS (USER‑SPECIFIC) ===========================
-  Future<void> saveNutritionLog({
-    required String userId,
-    int? waterMl,
-    int? calories,
-    int? meals,
-    required DateTime timestamp,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = _nutritionKey(userId);
-    final existing = prefs.getStringList(key) ?? [];
-    final entry = {
-      'water': waterMl,
-      'calories': calories,
-      'meals': meals,
-      'timestamp': timestamp.millisecondsSinceEpoch,
-    };
-    existing.add(jsonEncode(entry));
-    if (existing.length > 500) existing.removeAt(0);
-    await prefs.setStringList(key, existing);
-  }
-
-  Future<List<Map<String, dynamic>>> getNutritionLogs({
-    required String userId,
-    DateTime? from,
-    DateTime? to,
-  }) async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = _nutritionKey(userId);
-    final data = prefs.getStringList(key) ?? [];
-    final List<Map<String, dynamic>> logs = [];
-    final fromMs = from?.millisecondsSinceEpoch;
-    final toMs = to?.millisecondsSinceEpoch;
-
-    for (final entry in data) {
-      final map = jsonDecode(entry) as Map<String, dynamic>;
-      final timestamp = DateTime.fromMillisecondsSinceEpoch(map['timestamp']);
-      if (fromMs != null && timestamp.millisecondsSinceEpoch < fromMs) continue;
-      if (toMs != null && timestamp.millisecondsSinceEpoch > toMs) continue;
-      logs.add({
-        'water': map['water'],
-        'calories': map['calories'],
-        'meals': map['meals'],
-        'timestamp': timestamp,
-      });
-    }
-    logs.sort((a, b) =>
-        (b['timestamp'] as DateTime).compareTo(a['timestamp'] as DateTime));
-    return logs;
-  }
-
-  Future<Map<String, int>> getTodayNutrition({required String userId}) async {
-    final now = DateTime.now();
-    final startOfDay = DateTime(now.year, now.month, now.day);
-    final endOfDay = startOfDay.add(const Duration(days: 1));
-    final logs =
-        await getNutritionLogs(userId: userId, from: startOfDay, to: endOfDay);
-    int totalWater = 0, totalCalories = 0, totalMeals = 0;
-    for (final log in logs) {
-      totalWater += (log['water'] as int?) ?? 0;
-      totalCalories += (log['calories'] as int?) ?? 0;
-      totalMeals += (log['meals'] as int?) ?? 0;
-    }
-    return {
-      'water': totalWater,
-      'calories': totalCalories,
-      'meals': totalMeals
-    };
-  }
-
-  Future<List<Map<String, dynamic>>> getNutritionReport({
-    required String userId,
-    int days = 7,
-  }) async {
-    final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: days - 1));
-    final logs = await getNutritionLogs(userId: userId, from: start);
-    final Map<String, Map<String, int>> daily = {};
-    for (final log in logs) {
-      final date = (log['timestamp'] as DateTime).toLocal();
-      final key = '${date.year}-${date.month}-${date.day}';
-      daily.putIfAbsent(key, () => {'water': 0, 'calories': 0, 'meals': 0});
-      daily[key]!['water'] =
-          daily[key]!['water']! + ((log['water'] as int?) ?? 0);
-      daily[key]!['calories'] =
-          daily[key]!['calories']! + ((log['calories'] as int?) ?? 0);
-      daily[key]!['meals'] =
-          daily[key]!['meals']! + ((log['meals'] as int?) ?? 0);
-    }
-    final result = daily.entries.map((e) {
-      return {
-        'date': e.key,
-        'water': e.value['water'],
-        'calories': e.value['calories'],
-        'meals': e.value['meals'],
-      };
-    }).toList();
-    result.sort((a, b) => (b['date'] as String).compareTo(a['date'] as String));
-    return result;
-  }
-
-  // =========================== MEDITATION SESSIONS ===========================
+  // --- MEDITATION SESSIONS ---
   Future<void> saveMeditationSession({
     required String poseName,
     required int durationSeconds,
@@ -191,6 +82,7 @@ class DataStorageService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final existingData = prefs.getStringList(_meditationSessionsKey) ?? [];
+    
     final session = {
       'type': 'meditation',
       'poseName': poseName,
@@ -199,38 +91,42 @@ class DataStorageService {
       'endHeartRate': endHeartRate,
       'timestamp': timestamp.millisecondsSinceEpoch,
       'benefits': benefits ?? '',
-      'calmScore':
-          calmScore ?? calculateCalmScore(startHeartRate, endHeartRate),
+      'calmScore': calmScore ?? calculateCalmScore(startHeartRate, endHeartRate),
       'sessionId': 'med_${timestamp.millisecondsSinceEpoch}',
     };
+    
     existingData.add(jsonEncode(session));
-    if (existingData.length > 100) existingData.removeAt(0);
+    
+    // Keep only last 100 meditation sessions
+    if (existingData.length > 100) {
+      existingData.removeAt(0);
+    }
+    
     await prefs.setStringList(_meditationSessionsKey, existingData);
+    
+    // Update user stats
     await updateUserStats(
-        totalMeditationMinutes: durationSeconds ~/ 60,
-        lastActivityDate: timestamp);
+      totalMeditationMinutes: durationSeconds ~/ 60,
+      lastActivityDate: timestamp,
+    );
   }
 
-  Future<List<Map<String, dynamic>>> getMeditationSessions(
-      {int daysBack = 30}) async {
+  Future<List<Map<String, dynamic>>> getMeditationSessions({int daysBack = 30}) async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getStringList(_meditationSessionsKey) ?? [];
+    
     final cutoff = DateTime.now().subtract(Duration(days: daysBack));
-    return data
-        .map((entry) {
-          final map = jsonDecode(entry) as Map<String, dynamic>;
-          return {
-            ...map,
-            'timestamp': DateTime.fromMillisecondsSinceEpoch(map['timestamp'])
-          };
-        })
-        .where((entry) =>
-            entry['timestamp'] is DateTime &&
-            (entry['timestamp'] as DateTime).isAfter(cutoff))
-        .toList();
+    
+    return data.map((entry) {
+      final map = jsonDecode(entry) as Map<String, dynamic>;
+      return {
+        ...map,
+        'timestamp': DateTime.fromMillisecondsSinceEpoch(map['timestamp']),
+      };
+    }).where((entry) => entry['timestamp'] is DateTime && (entry['timestamp'] as DateTime).isAfter(cutoff)).toList();
   }
 
-  // =========================== BREATHWORK SESSIONS ===========================
+  // --- BREATHWORK SESSIONS ---
   Future<void> saveBreathworkSession({
     required String technique,
     required int durationSeconds,
@@ -242,6 +138,7 @@ class DataStorageService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final existingData = prefs.getStringList(_breathworkSessionsKey) ?? [];
+    
     final session = {
       'type': 'breathwork',
       'technique': technique,
@@ -254,34 +151,37 @@ class DataStorageService {
       'heartRateChange': startHeartRate - endHeartRate,
       'sessionId': 'breath_${timestamp.millisecondsSinceEpoch}',
     };
+    
     existingData.add(jsonEncode(session));
-    if (existingData.length > 100) existingData.removeAt(0);
+    
+    if (existingData.length > 100) {
+      existingData.removeAt(0);
+    }
+    
     await prefs.setStringList(_breathworkSessionsKey, existingData);
+    
     await updateUserStats(
-        totalBreathworkMinutes: durationSeconds ~/ 60,
-        lastActivityDate: timestamp);
+      totalBreathworkMinutes: durationSeconds ~/ 60,
+      lastActivityDate: timestamp,
+    );
   }
 
-  Future<List<Map<String, dynamic>>> getBreathworkSessions(
-      {int daysBack = 30}) async {
+  Future<List<Map<String, dynamic>>> getBreathworkSessions({int daysBack = 30}) async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getStringList(_breathworkSessionsKey) ?? [];
+    
     final cutoff = DateTime.now().subtract(Duration(days: daysBack));
-    return data
-        .map((entry) {
-          final map = jsonDecode(entry) as Map<String, dynamic>;
-          return {
-            ...map,
-            'timestamp': DateTime.fromMillisecondsSinceEpoch(map['timestamp'])
-          };
-        })
-        .where((entry) =>
-            entry['timestamp'] is DateTime &&
-            (entry['timestamp'] as DateTime).isAfter(cutoff))
-        .toList();
+    
+    return data.map((entry) {
+      final map = jsonDecode(entry) as Map<String, dynamic>;
+      return {
+        ...map,
+        'timestamp': DateTime.fromMillisecondsSinceEpoch(map['timestamp']),
+      };
+    }).where((entry) => entry['timestamp'] is DateTime && (entry['timestamp'] as DateTime).isAfter(cutoff)).toList();
   }
 
-  // =========================== WALKING / ACTIVITY SESSIONS ===========================
+  // --- WALKING/ACTIVITY SESSIONS ---
   Future<void> saveWalkingSession({
     required int steps,
     required double distanceKm,
@@ -294,6 +194,7 @@ class DataStorageService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final existingData = prefs.getStringList(_activitySessionsKey) ?? [];
+    
     final session = {
       'type': 'walking',
       'steps': steps,
@@ -306,9 +207,15 @@ class DataStorageService {
       'maxHeartRate': maxHeartRate,
       'sessionId': 'walk_${timestamp.millisecondsSinceEpoch}',
     };
+    
     existingData.add(jsonEncode(session));
-    if (existingData.length > 100) existingData.removeAt(0);
+    
+    if (existingData.length > 100) {
+      existingData.removeAt(0);
+    }
+    
     await prefs.setStringList(_activitySessionsKey, existingData);
+    
     await updateUserStats(
       totalWalkingMinutes: durationSeconds ~/ 60,
       totalSteps: steps,
@@ -317,26 +224,7 @@ class DataStorageService {
     );
   }
 
-  Future<List<Map<String, dynamic>>> getActivitySessions(
-      {int daysBack = 30}) async {
-    final prefs = await SharedPreferences.getInstance();
-    final data = prefs.getStringList(_activitySessionsKey) ?? [];
-    final cutoff = DateTime.now().subtract(Duration(days: daysBack));
-    return data
-        .map((entry) {
-          final map = jsonDecode(entry) as Map<String, dynamic>;
-          return {
-            ...map,
-            'timestamp': DateTime.fromMillisecondsSinceEpoch(map['timestamp'])
-          };
-        })
-        .where((entry) =>
-            entry['timestamp'] is DateTime &&
-            (entry['timestamp'] as DateTime).isAfter(cutoff))
-        .toList();
-  }
-
-  // =========================== SLEEP SOUNDS SESSIONS ===========================
+  // --- SLEEP SOUNDS SESSIONS ---
   Future<void> saveSleepSoundsSession({
     required String soundName,
     required int durationSeconds,
@@ -345,6 +233,7 @@ class DataStorageService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final existingData = prefs.getStringList(_sleepSoundsSessionsKey) ?? [];
+    
     final session = {
       'type': 'sleep_sounds',
       'soundName': soundName,
@@ -353,34 +242,37 @@ class DataStorageService {
       'relaxationScore': relaxationScore ?? 0,
       'sessionId': 'sleep_${timestamp.millisecondsSinceEpoch}',
     };
+    
     existingData.add(jsonEncode(session));
-    if (existingData.length > 100) existingData.removeAt(0);
+    
+    if (existingData.length > 100) {
+      existingData.removeAt(0);
+    }
+    
     await prefs.setStringList(_sleepSoundsSessionsKey, existingData);
+    
     await updateUserStats(
-        totalSleepSoundsMinutes: durationSeconds ~/ 60,
-        lastActivityDate: timestamp);
+      totalSleepSoundsMinutes: durationSeconds ~/ 60,
+      lastActivityDate: timestamp,
+    );
   }
 
-  Future<List<Map<String, dynamic>>> getSleepSoundsSessions(
-      {int daysBack = 30}) async {
+  Future<List<Map<String, dynamic>>> getSleepSoundsSessions({int daysBack = 30}) async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getStringList(_sleepSoundsSessionsKey) ?? [];
+    
     final cutoff = DateTime.now().subtract(Duration(days: daysBack));
-    return data
-        .map((entry) {
-          final map = jsonDecode(entry) as Map<String, dynamic>;
-          return {
-            ...map,
-            'timestamp': DateTime.fromMillisecondsSinceEpoch(map['timestamp'])
-          };
-        })
-        .where((entry) =>
-            entry['timestamp'] is DateTime &&
-            (entry['timestamp'] as DateTime).isAfter(cutoff))
-        .toList();
+    
+    return data.map((entry) {
+      final map = jsonDecode(entry) as Map<String, dynamic>;
+      return {
+        ...map,
+        'timestamp': DateTime.fromMillisecondsSinceEpoch(map['timestamp']),
+      };
+    }).where((entry) => entry['timestamp'] is DateTime && (entry['timestamp'] as DateTime).isAfter(cutoff)).toList();
   }
 
-  // =========================== DAILY GOALS ===========================
+  // --- DAILY GOALS ---
   Future<void> updateDailyGoal({
     required String goalType,
     required double progress,
@@ -389,11 +281,15 @@ class DataStorageService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final existingData = prefs.getStringList(_dailyGoalsKey) ?? [];
+    
     final goalKey = '${date.year}-${date.month}-${date.day}_$goalType';
+    
+    // Remove existing entry for same date and goal type
     existingData.removeWhere((e) {
       final map = jsonDecode(e) as Map<String, dynamic>;
       return map['goalKey'] == goalKey;
     });
+    
     final goal = {
       'goalKey': goalKey,
       'goalType': goalType,
@@ -403,29 +299,28 @@ class DataStorageService {
       'completionRate': (progress / target).clamp(0.0, 1.0),
       'isCompleted': progress >= target,
     };
+    
     existingData.add(jsonEncode(goal));
+    
     await prefs.setStringList(_dailyGoalsKey, existingData);
   }
 
   Future<List<Map<String, dynamic>>> getDailyGoals({int daysBack = 7}) async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getStringList(_dailyGoalsKey) ?? [];
+    
     final cutoff = DateTime.now().subtract(Duration(days: daysBack));
-    return data
-        .map((entry) {
-          final map = jsonDecode(entry) as Map<String, dynamic>;
-          return {
-            ...map,
-            'date': DateTime.fromMillisecondsSinceEpoch(map['date'])
-          };
-        })
-        .where((entry) =>
-            entry['date'] is DateTime &&
-            (entry['date'] as DateTime).isAfter(cutoff))
-        .toList();
+    
+    return data.map((entry) {
+      final map = jsonDecode(entry) as Map<String, dynamic>;
+      return {
+        ...map,
+        'date': DateTime.fromMillisecondsSinceEpoch(map['date']),
+      };
+    }).where((entry) => entry['date'] is DateTime && (entry['date'] as DateTime).isAfter(cutoff)).toList();
   }
 
-  // =========================== WELLNESS ACTIVITIES TRACKING ===========================
+  // --- WELLNESS ACTIVITIES TRACKING ---
   Future<void> trackWellnessActivity({
     required String activityName,
     required int durationMinutes,
@@ -436,6 +331,7 @@ class DataStorageService {
   }) async {
     final prefs = await SharedPreferences.getInstance();
     final existingData = prefs.getStringList(_wellnessActivitiesKey) ?? [];
+    
     final activity = {
       'activityName': activityName,
       'durationMinutes': durationMinutes,
@@ -445,81 +341,75 @@ class DataStorageService {
       'moodAfter': moodAfter,
       'moodImprovement': (moodAfter ?? 0) - (moodBefore ?? 0),
     };
+    
     existingData.add(jsonEncode(activity));
-    if (existingData.length > 200) existingData.removeAt(0);
+    
+    if (existingData.length > 200) {
+      existingData.removeAt(0);
+    }
+    
     await prefs.setStringList(_wellnessActivitiesKey, existingData);
   }
 
-  // =========================== ANALYTICS & INSIGHTS ===========================
+  // --- ANALYTICS & INSIGHTS ---
   Future<Map<String, dynamic>> getActivitySummary({int daysBack = 7}) async {
     final meditationSessions = await getMeditationSessions(daysBack: daysBack);
     final breathworkSessions = await getBreathworkSessions(daysBack: daysBack);
     final walkingSessions = await getActivitySessions(daysBack: daysBack);
-    final sleepSoundsSessions =
-        await getSleepSoundsSessions(daysBack: daysBack);
-
-    int totalMeditationMinutes = meditationSessions.fold(
-        0, (sum, session) => sum + ((session['durationSeconds'] as int) ~/ 60));
-    int totalBreathworkMinutes = breathworkSessions.fold(
-        0, (sum, session) => sum + ((session['durationSeconds'] as int) ~/ 60));
-    int totalWalkingMinutes = walkingSessions.fold(
-        0, (sum, session) => sum + ((session['durationSeconds'] as int) ~/ 60));
-    int totalSleepMinutes = sleepSoundsSessions.fold(
-        0, (sum, session) => sum + ((session['durationSeconds'] as int) ~/ 60));
-
-    int totalSteps = walkingSessions.fold(
-        0, (sum, session) => sum + (session['steps'] as int));
-    double totalCalories = walkingSessions.fold(
-        0.0, (sum, session) => sum + (session['calories'] as double));
-
+    final sleepSoundsSessions = await getSleepSoundsSessions(daysBack: daysBack);
+    
+    int totalMeditationMinutes = meditationSessions.fold(0, (int sum, session) => sum + ((session['durationSeconds'] as int) ~/ 60));
+    int totalBreathworkMinutes = breathworkSessions.fold(0, (int sum, session) => sum + ((session['durationSeconds'] as int) ~/ 60));
+    int totalWalkingMinutes = walkingSessions.fold(0, (int sum, session) => sum + ((session['durationSeconds'] as int) ~/ 60));
+    int totalSleepMinutes = sleepSoundsSessions.fold(0, (int sum, session) => sum + ((session['durationSeconds'] as int) ~/ 60));
+    
+    int totalSteps = walkingSessions.fold(0, (sum, session) => sum + (session['steps'] as int));
+    double totalCalories = walkingSessions.fold(0.0, (sum, session) => sum + (session['calories'] as double));
+    
     return {
-      'totalSessions': meditationSessions.length +
-          breathworkSessions.length +
-          walkingSessions.length +
-          sleepSoundsSessions.length,
+      'totalSessions': meditationSessions.length + breathworkSessions.length + walkingSessions.length + sleepSoundsSessions.length,
       'totalMeditationMinutes': totalMeditationMinutes,
       'totalBreathworkMinutes': totalBreathworkMinutes,
       'totalWalkingMinutes': totalWalkingMinutes,
       'totalSleepMinutes': totalSleepMinutes,
       'totalSteps': totalSteps,
       'totalCalories': totalCalories,
-      'avgHeartRateChange': calculateAverageHeartRateChange(
-          meditationSessions, breathworkSessions),
-      'mostPopularActivity': getMostPopularActivity(meditationSessions,
-          breathworkSessions, walkingSessions, sleepSoundsSessions),
+      'avgHeartRateChange': calculateAverageHeartRateChange(meditationSessions, breathworkSessions),
+      'mostPopularActivity': getMostPopularActivity(meditationSessions, breathworkSessions, walkingSessions, sleepSoundsSessions),
       'streakDays': await calculateStreak(),
     };
   }
 
-  // =========================== HELPER METHODS ===========================
+  // --- HELPER METHODS ---
   double calculateCalmScore(int startHR, int endHR) {
     final change = startHR - endHR;
-    if (change > 15) return 1.0;
-    if (change > 8) return 0.7;
-    if (change > 0) return 0.4;
-    return 0.1;
+    if (change > 15) return 1.0; // Excellent
+    if (change > 8) return 0.7;  // Good
+    if (change > 0) return 0.4;  // Fair
+    return 0.1; // Minimal change
   }
 
-  double calculateAverageHeartRateChange(
-      List meditationSessions, List breathworkSessions) {
+  double calculateAverageHeartRateChange(List meditationSessions, List breathworkSessions) {
     final allSessions = [...meditationSessions, ...breathworkSessions];
     if (allSessions.isEmpty) return 0.0;
+    
     double totalChange = allSessions.fold(0.0, (sum, session) {
       final start = session['startHeartRate'] as int;
       final end = session['endHeartRate'] as int;
       return sum + (start - end);
     });
+    
     return totalChange / allSessions.length;
   }
 
-  String getMostPopularActivity(List meditationSessions,
-      List breathworkSessions, List walkingSessions, List sleepSoundsSessions) {
+  String getMostPopularActivity(List meditationSessions, List breathworkSessions, List walkingSessions, List sleepSoundsSessions) {
     final activities = {
       'Meditation': meditationSessions.length,
       'Breathwork': breathworkSessions.length,
       'Walking': walkingSessions.length,
       'Sleep Sounds': sleepSoundsSessions.length,
     };
+    
     return activities.entries.reduce((a, b) => a.value > b.value ? a : b).key;
   }
 
@@ -530,16 +420,17 @@ class DataStorageService {
       ...await getActivitySessions(daysBack: 365),
       ...await getSleepSoundsSessions(daysBack: 365),
     ];
+    
     if (allSessions.isEmpty) return 0;
-    final activityDates = allSessions
-        .map((s) =>
-            (s['timestamp'] as DateTime).toLocal().toString().split(' ')[0])
-        .toSet()
-        .toList();
+    
+    // Sort by date and get unique days with activity
+    final activityDates = allSessions.map((s) => (s['timestamp'] as DateTime).toLocal().toString().split(' ')[0]).toSet().toList();
     activityDates.sort((a, b) => b.compareTo(a));
+    
     int streak = 0;
     final today = DateTime.now().toLocal().toString().split(' ')[0];
     DateTime currentDate = DateTime.parse(today);
+    
     for (int i = 0; i < 365; i++) {
       final dateStr = currentDate.toString().split(' ')[0];
       if (activityDates.contains(dateStr)) {
@@ -549,60 +440,72 @@ class DataStorageService {
         break;
       }
     }
+    
     return streak;
   }
 
-  // =========================== ORIGINAL BAND / SLEEP / WEIGHT / MOOD METHODS ===========================
-  Future<void> saveBandData(
-      {required int heartRate,
-      required int steps,
-      required DateTime timestamp}) async {
+  // --- ORIGINAL METHODS (Keep all existing functionality) ---
+  
+  // --- Band Data Storage (Heart Rate, Steps) ---
+  Future<void> saveBandData({
+    required int heartRate,
+    required int steps,
+    required DateTime timestamp,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final existingData = prefs.getStringList(_bandDataKey) ?? [];
+    
     final entry = {
       'hr': heartRate.toString(),
       'steps': steps.toString(),
-      'time': timestamp.millisecondsSinceEpoch.toString()
+      'time': timestamp.millisecondsSinceEpoch.toString(),
     };
+    
     existingData.add(jsonEncode(entry));
-    if (existingData.length > 10000) existingData.removeAt(0);
+    
+    // Keep only last 7 days of data (approx 10k entries max)
+    if (existingData.length > 10000) {
+      existingData.removeAt(0);
+    }
+    
     await prefs.setStringList(_bandDataKey, existingData);
   }
 
   Future<List<Map<String, dynamic>>> getBandData({int daysBack = 1}) async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getStringList(_bandDataKey) ?? [];
+    
     final cutoff = DateTime.now().subtract(Duration(days: daysBack));
-    return data
-        .map((entry) {
-          final map = jsonDecode(entry) as Map<String, dynamic>;
-          return {
-            'hr': int.parse(map['hr']),
-            'steps': int.parse(map['steps']),
-            'time': DateTime.fromMillisecondsSinceEpoch(int.parse(map['time'])),
-          };
-        })
-        .where((entry) =>
-            entry['time'] is DateTime &&
-            (entry['time'] as DateTime).isAfter(cutoff))
-        .toList();
+    
+    return data.map((entry) {
+      final map = jsonDecode(entry) as Map<String, dynamic>;
+      return {
+        'hr': int.parse(map['hr']),
+        'steps': int.parse(map['steps']),
+        'time': DateTime.fromMillisecondsSinceEpoch(int.parse(map['time'])),
+      };
+    }).where((entry) => entry['time'] is DateTime && (entry['time'] as DateTime).isAfter(cutoff)).toList();
   }
 
+  // --- Sleep Data Storage ---
   Future<void> saveSleepData(double hours, DateTime date) async {
     final prefs = await SharedPreferences.getInstance();
     final existingData = prefs.getStringList(_sleepDataKey) ?? [];
+    
     final entry = {
       'hours': hours.toString(),
-      'date': date.millisecondsSinceEpoch.toString()
+      'date': date.millisecondsSinceEpoch.toString(),
     };
+    
+    // Remove any existing entry for same date
     existingData.removeWhere((e) {
       final map = jsonDecode(e) as Map<String, dynamic>;
-      final entryDate =
-          DateTime.fromMillisecondsSinceEpoch(int.parse(map['date']));
-      return entryDate.year == date.year &&
-          entryDate.month == date.month &&
-          entryDate.day == date.day;
+      final entryDate = DateTime.fromMillisecondsSinceEpoch(int.parse(map['date']));
+      return entryDate.year == date.year && 
+             entryDate.month == date.month && 
+             entryDate.day == date.day;
     });
+    
     existingData.add(jsonEncode(entry));
     await prefs.setStringList(_sleepDataKey, existingData);
   }
@@ -610,36 +513,40 @@ class DataStorageService {
   Future<List<Map<String, dynamic>>> getSleepData({int daysBack = 7}) async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getStringList(_sleepDataKey) ?? [];
+    
     final cutoff = DateTime.now().subtract(Duration(days: daysBack));
-    return data
-        .map((entry) {
-          final map = jsonDecode(entry) as Map<String, dynamic>;
-          return {
-            'hours': double.parse(map['hours']),
-            'date': DateTime.fromMillisecondsSinceEpoch(int.parse(map['date']))
-          };
-        })
-        .where((entry) =>
-            entry['date'] is DateTime &&
-            (entry['date'] as DateTime).isAfter(cutoff))
-        .toList();
+    
+    return data.map((entry) {
+      final map = jsonDecode(entry) as Map<String, dynamic>;
+      return {
+        'hours': double.parse(map['hours']),
+        'date': DateTime.fromMillisecondsSinceEpoch(int.parse(map['date'])),
+      };
+    }).where((entry) {
+      final d = entry['date'];
+      return d is DateTime && d.isAfter(cutoff);
+    }).toList();
   }
 
+  // --- Weight Data Storage ---
   Future<void> saveWeightData(double weight, DateTime date) async {
     final prefs = await SharedPreferences.getInstance();
     final existingData = prefs.getStringList(_weightDataKey) ?? [];
+    
     final entry = {
       'weight': weight.toString(),
-      'date': date.millisecondsSinceEpoch.toString()
+      'date': date.millisecondsSinceEpoch.toString(),
     };
+    
+    // Remove any existing entry for same date
     existingData.removeWhere((e) {
       final map = jsonDecode(e) as Map<String, dynamic>;
-      final entryDate =
-          DateTime.fromMillisecondsSinceEpoch(int.parse(map['date']));
-      return entryDate.year == date.year &&
-          entryDate.month == date.month &&
-          entryDate.day == date.day;
+      final entryDate = DateTime.fromMillisecondsSinceEpoch(int.parse(map['date']));
+      return entryDate.year == date.year && 
+             entryDate.month == date.month && 
+             entryDate.day == date.day;
     });
+    
     existingData.add(jsonEncode(entry));
     await prefs.setStringList(_weightDataKey, existingData);
   }
@@ -647,63 +554,90 @@ class DataStorageService {
   Future<List<Map<String, dynamic>>> getWeightData({int daysBack = 30}) async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getStringList(_weightDataKey) ?? [];
+    
     final cutoff = DateTime.now().subtract(Duration(days: daysBack));
-    return data
-        .map((entry) {
-          final map = jsonDecode(entry) as Map<String, dynamic>;
-          return {
-            'weight': double.parse(map['weight']),
-            'date': DateTime.fromMillisecondsSinceEpoch(int.parse(map['date']))
-          };
-        })
-        .where((entry) =>
-            entry['date'] is DateTime &&
-            (entry['date'] as DateTime).isAfter(cutoff))
-        .toList();
+    
+    return data.map((entry) {
+      final map = jsonDecode(entry) as Map<String, dynamic>;
+      return {
+        'weight': double.parse(map['weight']),
+        'date': DateTime.fromMillisecondsSinceEpoch(int.parse(map['date'])),
+      };
+    }).where((entry) => entry['date'] is DateTime && (entry['date'] as DateTime).isAfter(cutoff)).toList();
   }
 
-  Future<void> saveMoodData(
-      {required String emoji, required String note, DateTime? date}) async {
+  // --- Mood Data Storage ---
+  Future<void> saveMoodData({
+    required String emoji,
+    required String note,
+    DateTime? date,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final existingData = prefs.getStringList(_moodDataKey) ?? [];
+    
     final entry = {
       'emoji': emoji,
       'note': note,
-      'date': (date ?? DateTime.now()).millisecondsSinceEpoch.toString()
+      'date': (date ?? DateTime.now()).millisecondsSinceEpoch.toString(),
     };
+    
     existingData.add(jsonEncode(entry));
-    if (existingData.length > 1000) existingData.removeAt(0);
+    
+    // Keep only last 30 days of mood data
+    if (existingData.length > 1000) {
+      existingData.removeAt(0);
+    }
+    
     await prefs.setStringList(_moodDataKey, existingData);
   }
 
   Future<List<Map<String, dynamic>>> getMoodData({int daysBack = 7}) async {
     final prefs = await SharedPreferences.getInstance();
     final data = prefs.getStringList(_moodDataKey) ?? [];
+    
     final cutoff = DateTime.now().subtract(Duration(days: daysBack));
-    return data
-        .map((entry) {
-          final map = jsonDecode(entry) as Map<String, dynamic>;
-          return {
-            'emoji': map['emoji'],
-            'note': map['note'],
-            'date': DateTime.fromMillisecondsSinceEpoch(int.parse(map['date']))
-          };
-        })
-        .where((entry) =>
-            entry['date'] is DateTime &&
-            (entry['date'] as DateTime).isAfter(cutoff))
-        .toList();
+    
+    return data.map((entry) {
+      final map = jsonDecode(entry) as Map<String, dynamic>;
+      return {
+        'emoji': map['emoji'],
+        'note': map['note'],
+        'date': DateTime.fromMillisecondsSinceEpoch(int.parse(map['date'])),
+      };
+    }).where((entry) => entry['date'] is DateTime && (entry['date'] as DateTime).isAfter(cutoff)).toList();
   }
 
+  // --- Activity Sessions Storage (original) ---
   Future<void> saveActivitySession(Map<String, dynamic> sessionData) async {
     final prefs = await SharedPreferences.getInstance();
     final existingData = prefs.getStringList(_activitySessionsKey) ?? [];
+    
     existingData.add(jsonEncode(sessionData));
-    if (existingData.length > 100) existingData.removeAt(0);
+    
+    // Keep only last 100 activity sessions
+    if (existingData.length > 100) {
+      existingData.removeAt(0);
+    }
+    
     await prefs.setStringList(_activitySessionsKey, existingData);
   }
 
-  // =========================== CLEAR DATA METHODS ===========================
+  Future<List<Map<String, dynamic>>> getActivitySessions({int daysBack = 30}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final data = prefs.getStringList(_activitySessionsKey) ?? [];
+    
+    final cutoff = DateTime.now().subtract(Duration(days: daysBack));
+    
+    return data.map((entry) {
+      final map = jsonDecode(entry) as Map<String, dynamic>;
+      return {
+        ...map,
+        'timestamp': DateTime.fromMillisecondsSinceEpoch(int.parse(map['timestamp'])),
+      };
+    }).where((entry) => entry['timestamp'] is DateTime && (entry['timestamp'] as DateTime).isAfter(cutoff)).toList();
+  }
+
+  // --- Clear All Data ---
   Future<void> clearAllData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_bandDataKey);
@@ -717,15 +651,9 @@ class DataStorageService {
     await prefs.remove(_wellnessActivitiesKey);
     await prefs.remove(_userStatsKey);
     await prefs.remove(_dailyGoalsKey);
-    // Remove all user-specific nutrition keys
-    final allKeys = prefs.getKeys();
-    for (final key in allKeys) {
-      if (key.toString().startsWith('nutrition_logs_')) {
-        await prefs.remove(key);
-      }
-    }
   }
 
+  // --- Clear User Data (for debugging) ---
   Future<void> clearAllUserData() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_meditationSessionsKey);
@@ -735,6 +663,5 @@ class DataStorageService {
     await prefs.remove(_wellnessActivitiesKey);
     await prefs.remove(_userStatsKey);
     await prefs.remove(_dailyGoalsKey);
-    // Remove current user's nutrition logs? We'll keep a separate method if needed.
   }
 }

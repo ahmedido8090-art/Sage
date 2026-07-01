@@ -1,7 +1,18 @@
+// screens/profile_screen.dart
+//
+// Entrance is now Reveal (large) instead of a hand-rolled
+// AnimationController, and the metric/condition/password cards are
+// staggered via StaggerColumn — same primitives as every other screen.
 import 'package:flutter/material.dart';
-import '../models/user.dart';
 import '../services/user_service.dart';
-import '../theme/bella_theme.dart';
+import '../services/bella_service.dart';
+import '../services/care_rules.dart';
+import '../models/user.dart';
+import '../theme/app_theme.dart';
+import '../utils/page_transitions.dart';
+import '../widgets/animated_number.dart';
+import '../widgets/reveal.dart';
+import '../widgets/stagger.dart';
 import 'login_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -13,7 +24,6 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-
   late TextEditingController _usernameController;
   late TextEditingController _ageController;
   late TextEditingController _heightController;
@@ -23,36 +33,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
   late TextEditingController _confirmPasswordController;
 
   String _selectedGender = 'Male';
-  List<String> _selectedDiseases = [];
-  final List<String> _availableDiseases = [
-    'Hypertension',
-    'Diabetes (Type 2)',
-    'Asthma',
-    'Anemia',
-    'High Cholesterol',
-    'Arthritis',
-    'Osteoporosis',
-    'Chronic Kidney Disease',
-    'Depression',
-    'Anxiety Disorder',
-    'Migraine',
-    'Thyroid Disorder (Hypothyroidism)',
-    'Gout',
-    'IBS (Irritable Bowel Syndrome)',
-    'GERD (Acid Reflux)',
-    'COPD',
-    'Psoriasis',
-    'Eczema',
-    'Fibromyalgia',
-    'Sleep Apnea'
-  ];
-
   bool _isLoading = false;
   bool _isEditing = false;
   bool _showPasswordFields = false;
   String? _errorMessage;
   String? _successMessage;
   double _bmi = 0.0;
+  final Set<String> _selectedConditions = {};
+
   User? _currentUser;
 
   @override
@@ -77,7 +65,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _newPasswordController = TextEditingController();
       _confirmPasswordController = TextEditingController();
       _selectedGender = _currentUser!.gender;
-      _selectedDiseases = List.from(_currentUser!.chronicDiseases);
+
+      _selectedConditions
+        ..clear()
+        ..addAll(_currentUser!.chronicDiseases);
+
       _calculateBMI();
     }
   }
@@ -86,7 +78,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_currentUser != null &&
         _currentUser!.height > 0 &&
         _currentUser!.weight > 0) {
-      final heightInMeters = _currentUser!.height / 100;
+      double heightInMeters = _currentUser!.height / 100;
       _bmi = _currentUser!.weight / (heightInMeters * heightInMeters);
     }
   }
@@ -99,503 +91,785 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Color _getBMIColor() {
-    if (_bmi < 18.5) return BellaColors.warning;
-    if (_bmi < 25) return BellaColors.success;
-    if (_bmi < 30) return BellaColors.warning;
-    return BellaColors.danger;
-  }
-
-  void _toggleDisease(String disease) {
-    setState(() {
-      if (_selectedDiseases.contains(disease)) {
-        _selectedDiseases.remove(disease);
-      } else {
-        _selectedDiseases.add(disease);
-      }
-    });
+    if (_bmi < 18.5) return SageColors.amber;
+    if (_bmi < 25) return SageColors.moss;
+    if (_bmi < 30) return SageColors.amber;
+    return SageColors.clay;
   }
 
   void _updateProfile() async {
-    if (!_formKey.currentState!.validate()) return;
+    if (_formKey.currentState!.validate()) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+        _successMessage = null;
+      });
 
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-      _successMessage = null;
-    });
+      await Future.delayed(const Duration(milliseconds: 500));
 
-    await Future.delayed(const Duration(milliseconds: 500));
+      // Create updated user object
+      final updatedUser = User(
+        username: _usernameController.text.trim(),
+        password: _currentUser!.password, // Keep current password
+        age: int.tryParse(_ageController.text) ?? _currentUser!.age,
+        gender: _selectedGender,
+        height: double.tryParse(_heightController.text) ?? _currentUser!.height,
+        weight: double.tryParse(_weightController.text) ?? _currentUser!.weight,
+        chronicDiseases: _selectedConditions.toList(),
+      );
 
-    final updatedUser = User(
-      username: _usernameController.text.trim(),
-      password: _currentUser!.password,
-      age: int.tryParse(_ageController.text) ?? _currentUser!.age,
-      gender: _selectedGender,
-      height: double.tryParse(_heightController.text) ?? _currentUser!.height,
-      weight: double.tryParse(_weightController.text) ?? _currentUser!.weight,
-      dailyStepGoal: _currentUser!.dailyStepGoal,
-      chronicDiseases: _selectedDiseases,
-      waterGoal: _currentUser!.waterGoal,
-      caloriesGoal: _currentUser!.caloriesGoal,
-    );
+      // Update user details
+      UserService().updateUserDetails(_currentUser!.username, updatedUser);
 
-    UserService().updateUserDetails(_currentUser!.username, updatedUser);
+      // Re-derive the water target from the updated weight/BMI and conditions
+      // so PurePlate's hydration goal stays in sync without requiring the user
+      // to manually re-visit that screen.
+      final h = updatedUser.height / 100;
+      final bmi = h > 0 ? updatedUser.weight / (h * h) : 22.5;
+      final plan = CareRules.generatePlan(
+        bmi: bmi,
+        conditions: updatedUser.chronicDiseases,
+      );
+      final bella = BellaService();
+      final currentTargets = bella.getTargets();
+      // Only overwrite waterMl — leave calorieTarget and activity targets alone
+      // so the user's PurePlate customisations aren't silently reset.
+      await bella.saveTargets({
+        ...currentTargets,
+        'waterMl': plan.dailyWaterMlTarget,
+      });
 
-    setState(() {
-      _isLoading = false;
-      _isEditing = false;
-      _currentUser = updatedUser;
-      _calculateBMI();
-      _successMessage = 'Profile updated successfully.';
-    });
+      setState(() {
+        _isLoading = false;
+        _isEditing = false;
+        _currentUser = updatedUser;
+        _calculateBMI();
+        _successMessage = 'Profile updated successfully!';
+      });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profile updated successfully.')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Profile updated successfully!'),
+          backgroundColor: SageColors.moss,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
   }
 
   void _changePassword() {
     if (_currentPasswordController.text.isEmpty ||
         _newPasswordController.text.isEmpty ||
         _confirmPasswordController.text.isEmpty) {
-      setState(() => _errorMessage = 'Please fill all password fields');
+      setState(() {
+        _errorMessage = 'Please fill all password fields';
+      });
       return;
     }
+
     if (_newPasswordController.text != _confirmPasswordController.text) {
-      setState(() => _errorMessage = 'New passwords do not match');
+      setState(() {
+        _errorMessage = 'New passwords do not match';
+      });
       return;
     }
+
     if (_currentPasswordController.text != _currentUser!.password) {
-      setState(() => _errorMessage = 'Current password is incorrect');
+      setState(() {
+        _errorMessage = 'Current password is incorrect';
+      });
       return;
     }
-    UserService()
-        .updatePassword(_currentUser!.username, _newPasswordController.text);
+
+    // Update password
+    final userService = UserService();
+    userService.updatePassword(
+      _currentUser!.username,
+      _newPasswordController.text,
+    );
+
     setState(() {
       _showPasswordFields = false;
       _currentPasswordController.clear();
       _newPasswordController.clear();
       _confirmPasswordController.clear();
-      _successMessage = 'Password changed successfully.';
+      _successMessage = 'Password changed successfully!';
     });
+
     ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password changed successfully.')));
+      SnackBar(
+        content: const Text('Password changed successfully!'),
+        backgroundColor: SageColors.moss,
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   void _logout() {
     UserService().logout();
-    Navigator.pushAndRemoveUntil(context,
-        MaterialPageRoute(builder: (_) => const LoginScreen()), (_) => false);
+    Navigator.pushAndRemoveUntil(
+      context,
+      fadeRoute(const LoginScreen()),
+      (route) => false,
+    );
+  }
+
+  InputDecoration _fieldDecoration(String label, IconData icon,
+      {bool enabled = true}) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(color: SageColors.inkSoft),
+      prefixIcon: Icon(icon, color: SageColors.moss, size: 20),
+      filled: true,
+      fillColor:
+          enabled ? SageColors.linen : SageColors.line.withValues(alpha: 0.3),
+      enabled: enabled,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: SageColors.line),
+      ),
+      disabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: SageColors.line),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(14),
+        borderSide: BorderSide(color: SageColors.moss, width: 1.5),
+      ),
+    );
+  }
+
+  BoxDecoration _cardDecoration() {
+    return BoxDecoration(
+      color: SageColors.card,
+      border: Border.all(color: SageColors.line),
+      borderRadius: const BorderRadius.only(
+        topLeft: Radius.circular(4),
+        topRight: Radius.circular(20),
+        bottomLeft: Radius.circular(20),
+        bottomRight: Radius.circular(20),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_currentUser == null) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        backgroundColor: SageColors.linen,
+        appBar: AppBar(
+          title: const Text('Profile'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+        ),
+        body: Center(
+          child: CircularProgressIndicator(color: SageColors.moss),
+        ),
+      );
     }
 
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(gradient: BellaColors.appGradient),
-        child: SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: SageColors.linen,
+      appBar: AppBar(
+        title: Text('Profile', style: SageText.headline()),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          if (!_isEditing)
+            IconButton(
+              icon: Icon(Icons.edit_outlined, color: SageColors.moss),
+              onPressed: () {
+                setState(() {
+                  _isEditing = true;
+                });
+              },
+            ),
+        ],
+      ),
+      body: Reveal(
+        size: RevealSize.large,
+        child: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 28),
+        child: Form(
+          key: _formKey,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header — avatar + username
+              Center(
+                child: Container(
+                  width: 92,
+                  height: 92,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: SageColors.moss,
+                  ),
+                  child: Center(
+                    child: Text(
+                      _currentUser!.username.isNotEmpty
+                          ? _currentUser!.username[0].toUpperCase()
+                          : '?',
+                      style: SageText.mono(
+                          size: 36,
+                          weight: FontWeight.w500,
+                          color: SageColors.linen),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Center(
+                child: Text(_currentUser!.username, style: SageText.headline()),
+              ),
+              const SizedBox(height: 30),
+
+              StaggerColumn(
+                initialDelay: const Duration(milliseconds: 120),
                 children: [
-                  Row(
-                    children: [
-                      const Text('Profile',
+
+              // BMI Card
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: _cardDecoration(),
+                child: Column(
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Health metrics',
                           style: TextStyle(
-                              color: BellaColors.textPrimary,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 28)),
-                      const Spacer(),
-                      if (!_isEditing)
-                        IconButton(
-                          icon: const Icon(Icons.edit,
-                              color: BellaColors.primary),
-                          onPressed: () => setState(() {
-                            _isEditing = true;
-                            _errorMessage = null;
-                            _successMessage = null;
-                          }),
+                              fontSize: 15, fontWeight: FontWeight.w600),
                         ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 5),
+                          decoration: BoxDecoration(
+                            color: _getBMIColor().withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            _getBMICategory(),
+                            style: TextStyle(
+                                color: _getBMIColor(),
+                                fontWeight: FontWeight.w700,
+                                fontSize: 11.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildMetricCard('BMI', _bmi, '',
+                            Icons.scale_outlined),
+                        _buildMetricCard(
+                            'Height',
+                            _currentUser!.height,
+                            'cm',
+                            Icons.height),
+                        _buildMetricCard(
+                            'Weight',
+                            _currentUser!.weight,
+                            'kg',
+                            Icons.monitor_weight_outlined),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Messages
+              if (_errorMessage != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: SageColors.clay.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: SageColors.clay.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.error_outline,
+                          color: SageColors.clay, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(_errorMessage!,
+                            style: TextStyle(color: SageColors.clay)),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  Center(
-                    child: Column(
-                      children: [
-                        Container(
-                          width: 104,
-                          height: 104,
-                          decoration: const BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: BellaColors.primaryGradient),
-                          child: const Icon(Icons.person,
-                              size: 50, color: Colors.white),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(_currentUser!.username,
-                            style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                                color: BellaColors.textPrimary)),
-                      ],
-                    ),
+                ),
+              if (_successMessage != null)
+                Container(
+                  margin: const EdgeInsets.only(bottom: 16),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: SageColors.moss.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: SageColors.moss.withValues(alpha: 0.3)),
                   ),
-                  const SizedBox(height: 24),
-                  _sectionCard(
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            const Text('Health Metrics',
-                                style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: BellaColors.textPrimary)),
-                            const Spacer(),
-                            Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 6),
-                              decoration: BoxDecoration(
-                                  color: _getBMIColor().withOpacity(0.12),
-                                  borderRadius: BorderRadius.circular(20)),
-                              child: Text(_getBMICategory(),
-                                  style: TextStyle(
-                                      color: _getBMIColor(),
-                                      fontWeight: FontWeight.bold)),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 20),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            _metric(
-                                'BMI', _bmi.toStringAsFixed(1), Icons.scale),
-                            _metric(
-                                'Height',
-                                _currentUser!.height.toStringAsFixed(1),
-                                Icons.height,
-                                unit: 'cm'),
-                            _metric(
-                                'Weight',
-                                _currentUser!.weight.toStringAsFixed(1),
-                                Icons.monitor_weight,
-                                unit: 'kg'),
-                          ],
-                        ),
-                      ],
-                    ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.check_circle_outline,
+                          color: SageColors.moss, size: 20),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(_successMessage!,
+                            style: TextStyle(color: SageColors.moss)),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 18),
-                  if (_errorMessage != null)
-                    _messageCard(_errorMessage!, BellaColors.danger,
-                        Icons.error_outline),
-                  if (_successMessage != null)
-                    _messageCard(_successMessage!, BellaColors.success,
-                        Icons.check_circle_outline),
-                  if (_errorMessage != null || _successMessage != null)
+                ),
+
+              // Personal Information
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: _cardDecoration(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Personal information',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
                     const SizedBox(height: 18),
-                  _sectionCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text('Personal Information',
-                            style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: BellaColors.textPrimary)),
-                        const SizedBox(height: 20),
-                        TextFormField(
-                            controller: _usernameController,
-                            enabled: false,
-                            decoration: const InputDecoration(
-                                labelText: 'Username',
-                                prefixIcon: Icon(Icons.person))),
-                        const SizedBox(height: 16),
-                        TextFormField(
-                          controller: _ageController,
-                          enabled: _isEditing,
-                          keyboardType: TextInputType.number,
-                          decoration: const InputDecoration(
-                              labelText: 'Age',
-                              prefixIcon: Icon(Icons.calendar_today)),
-                          validator: (value) {
-                            if (value == null || value.isEmpty)
-                              return 'Please enter your age';
-                            final age = int.tryParse(value);
-                            return (age == null || age < 13 || age > 120)
-                                ? 'Enter a valid age (13-120)'
-                                : null;
-                          },
-                        ),
-                        const SizedBox(height: 16),
-                        DropdownButtonFormField<String>(
-                          value: _selectedGender,
-                          dropdownColor: BellaColors.surfaceAlt,
-                          style:
-                              const TextStyle(color: BellaColors.textPrimary),
-                          decoration: const InputDecoration(
-                              labelText: 'Gender', prefixIcon: Icon(Icons.wc)),
-                          items: const [
-                            DropdownMenuItem(
-                                value: 'Male', child: Text('Male')),
-                            DropdownMenuItem(
-                                value: 'Female', child: Text('Female')),
-                          ],
-                          onChanged: _isEditing
-                              ? (newValue) =>
-                                  setState(() => _selectedGender = newValue!)
-                              : null,
-                        ),
-                        const SizedBox(height: 16),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextFormField(
-                                controller: _heightController,
-                                enabled: _isEditing,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                    labelText: 'Height (cm)',
-                                    prefixIcon: Icon(Icons.height)),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty)
-                                    return 'Height required';
-                                  final height = double.tryParse(value);
-                                  return (height == null ||
-                                          height < 50 ||
-                                          height > 250)
-                                      ? '50-250 cm'
-                                      : null;
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: TextFormField(
-                                controller: _weightController,
-                                enabled: _isEditing,
-                                keyboardType: TextInputType.number,
-                                decoration: const InputDecoration(
-                                    labelText: 'Weight (kg)',
-                                    prefixIcon: Icon(Icons.monitor_weight)),
-                                validator: (value) {
-                                  if (value == null || value.isEmpty)
-                                    return 'Weight required';
-                                  final weight = double.tryParse(value);
-                                  return (weight == null ||
-                                          weight < 20 ||
-                                          weight > 300)
-                                      ? '20-300 kg'
-                                      : null;
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        const Text(
-                            'Chronic Conditions (optional, multi‑select)',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: BellaColors.textPrimary)),
-                        const SizedBox(height: 8),
-                        Container(
-                          height: 200,
-                          decoration: BoxDecoration(
-                            color: BellaColors.surfaceAlt,
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(color: BellaColors.divider),
-                          ),
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.all(12),
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: _availableDiseases.map((disease) {
-                                final isSelected =
-                                    _selectedDiseases.contains(disease);
-                                return FilterChip(
-                                  label: Text(disease),
-                                  selected: isSelected,
-                                  onSelected: _isEditing
-                                      ? (_) => _toggleDisease(disease)
-                                      : null,
-                                  backgroundColor: BellaColors.surface,
-                                  selectedColor:
-                                      BellaColors.primary.withOpacity(0.3),
-                                  labelStyle: TextStyle(
-                                    color: isSelected
-                                        ? BellaColors.primary
-                                        : BellaColors.textSecondary,
-                                    fontSize: 12,
-                                  ),
-                                );
-                              }).toList(),
-                            ),
-                          ),
-                        ),
-                      ],
+
+                    TextFormField(
+                      controller: _usernameController,
+                      decoration: _fieldDecoration(
+                          'Username', Icons.person_outline,
+                          enabled: false),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                  _sectionCard(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            const Text('Password Settings',
-                                style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: BellaColors.textPrimary)),
-                            const Spacer(),
-                            IconButton(
-                              icon: Icon(
-                                  _showPasswordFields
-                                      ? Icons.expand_less
-                                      : Icons.expand_more,
-                                  color: BellaColors.primary),
-                              onPressed: () => setState(() =>
-                                  _showPasswordFields = !_showPasswordFields),
-                            ),
-                          ],
-                        ),
-                        if (_showPasswordFields) ...[
-                          const SizedBox(height: 16),
-                          TextFormField(
-                              controller: _currentPasswordController,
-                              obscureText: true,
-                              decoration: const InputDecoration(
-                                  labelText: 'Current Password',
-                                  prefixIcon: Icon(Icons.lock))),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                            controller: _newPasswordController,
-                            obscureText: true,
-                            decoration: const InputDecoration(
-                                labelText: 'New Password',
-                                prefixIcon: Icon(Icons.lock_outline)),
-                            validator: (value) => (value != null &&
-                                    value.isNotEmpty &&
-                                    value.length < 6)
-                                ? 'Password must be at least 6 characters'
-                                : null,
-                          ),
-                          const SizedBox(height: 16),
-                          TextFormField(
-                              controller: _confirmPasswordController,
-                              obscureText: true,
-                              decoration: const InputDecoration(
-                                  labelText: 'Confirm New Password',
-                                  prefixIcon: Icon(Icons.lock_reset))),
-                          const SizedBox(height: 16),
-                          ElevatedButton(
-                              onPressed: _changePassword,
-                              child: const Text('Change Password')),
-                        ],
-                      ],
+                    const SizedBox(height: 14),
+
+                    TextFormField(
+                      controller: _ageController,
+                      decoration: _fieldDecoration(
+                          'Age', Icons.calendar_today_outlined,
+                          enabled: _isEditing),
+                      keyboardType: TextInputType.number,
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter your age';
+                        }
+                        final age = int.tryParse(value);
+                        if (age == null || age < 13 || age > 120) {
+                          return 'Enter a valid age (13-120)';
+                        }
+                        return null;
+                      },
                     ),
-                  ),
-                  const SizedBox(height: 20),
-                  if (_isEditing)
+                    const SizedBox(height: 14),
+
+                    DropdownButtonFormField<String>(
+                      initialValue: _selectedGender,
+                      decoration: _fieldDecoration('Gender', Icons.wc_outlined,
+                          enabled: _isEditing),
+                      items: ['Male', 'Female', 'Other'].map((String value) {
+                        return DropdownMenuItem<String>(
+                          value: value,
+                          child: Text(value),
+                        );
+                      }).toList(),
+                      onChanged: _isEditing
+                          ? (newValue) {
+                              setState(() {
+                                _selectedGender = newValue!;
+                              });
+                            }
+                          : null,
+                    ),
+                    const SizedBox(height: 14),
+
                     Row(
                       children: [
                         Expanded(
-                          child: OutlinedButton(
-                            onPressed: () => setState(() {
-                              _isEditing = false;
-                              _loadUserData();
-                            }),
-                            style: OutlinedButton.styleFrom(
-                                foregroundColor: BellaColors.danger,
-                                side: const BorderSide(
-                                    color: BellaColors.danger)),
-                            child: const Text('Cancel'),
+                          child: TextFormField(
+                            controller: _heightController,
+                            decoration: _fieldDecoration(
+                                'Height (cm)', Icons.height,
+                                enabled: _isEditing),
+                            keyboardType: TextInputType.number,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter height';
+                              }
+                              final height = double.tryParse(value);
+                              if (height == null ||
+                                  height < 50 ||
+                                  height > 250) {
+                                return 'Enter valid height (50-250 cm)';
+                              }
+                              return null;
+                            },
                           ),
                         ),
-                        const SizedBox(width: 16),
+                        const SizedBox(width: 14),
                         Expanded(
-                          child: ElevatedButton(
-                            onPressed: _isLoading ? null : _updateProfile,
-                            child: _isLoading
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                        color: Colors.white, strokeWidth: 2))
-                                : const Text('Save Changes'),
+                          child: TextFormField(
+                            controller: _weightController,
+                            decoration: _fieldDecoration(
+                                'Weight (kg)', Icons.monitor_weight_outlined,
+                                enabled: _isEditing),
+                            keyboardType: TextInputType.number,
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter weight';
+                              }
+                              final weight = double.tryParse(value);
+                              if (weight == null ||
+                                  weight < 20 ||
+                                  weight > 300) {
+                                return 'Enter valid weight (20-300 kg)';
+                              }
+                              return null;
+                            },
                           ),
                         ),
                       ],
                     ),
-                  const SizedBox(height: 18),
-                  OutlinedButton(
-                    onPressed: _logout,
-                    style: OutlinedButton.styleFrom(
-                        foregroundColor: BellaColors.danger,
-                        side: const BorderSide(color: BellaColors.danger)),
-                    child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.logout, size: 18),
-                          SizedBox(width: 8),
-                          Text('Logout')
-                        ]),
-                  ),
-                  const SizedBox(height: 40),
-                ],
+                  ],
+                ),
               ),
-            ),
+
+              const SizedBox(height: 16),
+
+              // Chronic Conditions
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: _cardDecoration(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Chronic conditions',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _isEditing
+                          ? 'Tap to add or remove a condition.'
+                          : (_selectedConditions.isEmpty
+                              ? 'None on file'
+                              : '${_selectedConditions.length} on file'),
+                      style: TextStyle(color: SageColors.inkSoft, fontSize: 12),
+                    ),
+                    const SizedBox(height: 12),
+                    _buildConditionChips(),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Appearance — dark mode toggle
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: _cardDecoration(),
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: ThemeController.isDark,
+                  builder: (context, isDark, _) {
+                    return Row(
+                      children: [
+                        Container(
+                          width: 38,
+                          height: 38,
+                          decoration: BoxDecoration(
+                            color: SageColors.moss.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            isDark
+                                ? Icons.dark_mode_outlined
+                                : Icons.light_mode_outlined,
+                            size: 18,
+                            color: SageColors.moss,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text('Dark mode',
+                                  style: TextStyle(
+                                      fontSize: 14.5,
+                                      fontWeight: FontWeight.w600)),
+                              const SizedBox(height: 2),
+                              Text(
+                                isDark
+                                    ? 'On — easier on the eyes at night'
+                                    : 'Off — bright and clean',
+                                style: TextStyle(
+                                    fontSize: 11.5, color: SageColors.inkSoft),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: isDark,
+                          activeThumbColor: SageColors.moss,
+                          onChanged: (value) => ThemeController.setDark(value),
+                        ),
+                      ],
+                    );
+                  },
+                ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Password Change
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: _cardDecoration(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Password settings',
+                          style: TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w600),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            _showPasswordFields
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                            color: SageColors.moss,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _showPasswordFields = !_showPasswordFields;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    if (_showPasswordFields) ...[
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _currentPasswordController,
+                        obscureText: true,
+                        decoration: _fieldDecoration(
+                            'Current password', Icons.lock_outline),
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _newPasswordController,
+                        obscureText: true,
+                        decoration: _fieldDecoration(
+                            'New password', Icons.lock_outline),
+                        validator: (value) {
+                          if (value != null &&
+                              value.isNotEmpty &&
+                              value.length < 6) {
+                            return 'Password must be at least 6 characters';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 14),
+                      TextFormField(
+                        controller: _confirmPasswordController,
+                        obscureText: true,
+                        decoration: _fieldDecoration(
+                            'Confirm new password', Icons.lock_reset_outlined),
+                      ),
+                      const SizedBox(height: 18),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: _changePassword,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: SageColors.moss,
+                            foregroundColor: SageColors.linen,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                            elevation: 0,
+                          ),
+                          child: const Text('Change password'),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              // Action Buttons
+              if (_isEditing)
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () {
+                          setState(() {
+                            _isEditing = false;
+                            _loadUserData();
+                          });
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: SageColors.clay,
+                          side: BorderSide(color: SageColors.clay),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: _isLoading ? null : _updateProfile,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: SageColors.moss,
+                          foregroundColor: SageColors.linen,
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14)),
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          elevation: 0,
+                        ),
+                        child: _isLoading
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                    color: SageColors.linen, strokeWidth: 2),
+                              )
+                            : const Text('Save changes'),
+                      ),
+                    ),
+                  ],
+                ),
+
+              const SizedBox(height: 18),
+
+              // Logout Button
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: _logout,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: SageColors.clay,
+                    side: BorderSide(color: SageColors.clay),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
+                    padding: const EdgeInsets.symmetric(vertical: 15),
+                  ),
+                  child: const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.logout, size: 18),
+                      SizedBox(width: 8),
+                      Text('Logout'),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              ], // end StaggerColumn children
+              ), // end StaggerColumn
+            ], // Column children
+          ), // Column
+        ), // Form
+      ), // SingleChildScrollView
+      ), // Reveal
+    ); // Scaffold
+  }
+
+  Widget _buildConditionChips() {
+    if (!_isEditing) {
+      if (_selectedConditions.isEmpty) return const SizedBox.shrink();
+      return Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: _selectedConditions.map((condition) {
+          return Chip(
+            label: Text(condition),
+            backgroundColor: SageColors.moss.withValues(alpha: 0.12),
+            labelStyle: TextStyle(
+                fontSize: 12.5,
+                color: SageColors.moss,
+                fontWeight: FontWeight.w600),
+            side: BorderSide(color: SageColors.moss.withValues(alpha: 0.3)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          );
+        }).toList(),
+      );
+    }
+
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: ChronicConditions.options.map((condition) {
+        final selected = _selectedConditions.contains(condition);
+        return FilterChip(
+          label: Text(condition),
+          selected: selected,
+          onSelected: (value) {
+            setState(() {
+              if (value) {
+                _selectedConditions.add(condition);
+              } else {
+                _selectedConditions.remove(condition);
+              }
+            });
+          },
+          showCheckmark: false,
+          backgroundColor: SageColors.card,
+          selectedColor: SageColors.moss.withValues(alpha: 0.15),
+          side: BorderSide(color: selected ? SageColors.moss : SageColors.line),
+          labelStyle: TextStyle(
+            fontSize: 12.5,
+            color: selected ? SageColors.moss : SageColors.inkSoft,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
           ),
-        ),
-      ),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        );
+      }).toList(),
     );
   }
 
-  Widget _sectionCard({required Widget child}) => Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-            color: BellaColors.surface,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: BellaColors.divider)),
-        child: child,
-      );
-
-  Widget _metric(String title, String value, IconData icon,
-          {String unit = ''}) =>
-      Column(
-        children: [
-          Icon(icon, size: 24, color: BellaColors.primary),
-          const SizedBox(height: 8),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: BellaColors.textPrimary)),
-          Text('$title ${unit.trim()}'.trim(),
-              style: const TextStyle(
-                  fontSize: 12, color: BellaColors.textSecondary)),
-        ],
-      );
-
-  Widget _messageCard(String text, Color color, IconData icon) => Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-            color: color.withOpacity(0.12),
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color.withOpacity(0.24))),
-        child: Row(children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text, style: TextStyle(color: color)))
-        ]),
-      );
+  Widget _buildMetricCard(
+      String title, double value, String unit, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, size: 22, color: SageColors.moss),
+        const SizedBox(height: 8),
+        AnimatedDouble(
+          value: value,
+          formatter: (v) => v.toStringAsFixed(1),
+          style: SageText.mono(size: 19),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          '$title $unit',
+          style: TextStyle(fontSize: 11.5, color: SageColors.inkSoft),
+        ),
+      ],
+    );
+  }
 }
