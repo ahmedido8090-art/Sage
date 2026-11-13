@@ -6,6 +6,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:material_ui/material_ui.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart' as fbp;
 import '../services/bluetooth_service.dart';
 import '../services/system_settings.dart';
 import '../theme/app_theme.dart';
@@ -16,6 +17,7 @@ import '../widgets/sage_feedback.dart';
 import '../widgets/sage_illustration.dart';
 import '../widgets/sage_states.dart';
 import '../widgets/state_copy.dart';
+import 'band_readiness.dart';
 
 /// Opens the band picker as a bottom sheet.
 Future<void> showBandPicker(BuildContext context) {
@@ -49,13 +51,33 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
   Timer? _scanTimer;
   bool _scanning = true;
 
+  /// iOS asks for Bluetooth permission the first time the adapter is looked
+  /// at, and can be switched off or denied, so scanning waits until the
+  /// system says it is ready. Android's flow asks for permissions elsewhere.
+  BandReadiness _readiness =
+      Platform.isIOS ? BandReadiness.checking : BandReadiness.ready;
+  StreamSubscription<fbp.BluetoothAdapterState>? _adapterSub;
+
   @override
   void initState() {
     super.initState();
-    _scan();
+    if (Platform.isIOS) {
+      _adapterSub = fbp.FlutterBluePlus.adapterState.listen((state) {
+        if (!mounted) return;
+        final next = readinessFromAdapter(state);
+        final becameReady =
+            next == BandReadiness.ready && _readiness != BandReadiness.ready;
+        setState(() => _readiness = next);
+        // Allowed the prompt, or switched Bluetooth on: start looking now.
+        if (becameReady) _scan();
+      });
+    } else {
+      _scan();
+    }
   }
 
   void _scan() {
+    if (_readiness != BandReadiness.ready) return;
     widget.btService.startScan();
     _scanTimer?.cancel();
     setState(() => _scanning = true);
@@ -66,6 +88,7 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
 
   @override
   void dispose() {
+    _adapterSub?.cancel();
     _scanTimer?.cancel();
     widget.btService.stopScan();
     super.dispose();
@@ -85,7 +108,7 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
                 children: [
                   Expanded(
                       child: Text('Select your band', style: SageText.title())),
-                  if (!_scanning)
+                  if (!_scanning && _readiness == BandReadiness.ready)
                     TextButton.icon(
                       onPressed: _scan,
                       icon: const Icon(Icons.refresh_rounded, size: 18),
@@ -106,38 +129,40 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
               ],
               const SizedBox(height: SageSpace.md),
               Expanded(
-                child: StreamBuilder<List<SageDevice>>(
-                  stream: widget.btService.scanResults,
-                  initialData: const [],
-                  builder: (context, snapshot) {
-                    if (snapshot.hasError) {
-                      return ErrorState(
-                        error: snapshot.error,
-                        compact: true,
-                        onRetry: _scan,
-                      );
-                    }
-                    final devices = snapshot.data ?? [];
-                    if (devices.isEmpty) {
-                      return _scanning
-                          ? const _ScanningState()
-                          : _NothingFound(onRescan: _scan);
-                    }
-                    return ListView.separated(
-                      itemCount: devices.length,
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(height: SageSpace.sm),
-                      itemBuilder: (ctx, i) => _DeviceTile(
-                        device: devices[i],
-                        onTap: () {
-                          final messenger = ScaffoldMessenger.of(context);
-                          Navigator.pop(context);
-                          _connectTo(messenger, devices[i]);
+                child: _readiness != BandReadiness.ready
+                    ? _NotReady(readiness: _readiness)
+                    : StreamBuilder<List<SageDevice>>(
+                        stream: widget.btService.scanResults,
+                        initialData: const [],
+                        builder: (context, snapshot) {
+                          if (snapshot.hasError) {
+                            return ErrorState(
+                              error: snapshot.error,
+                              compact: true,
+                              onRetry: _scan,
+                            );
+                          }
+                          final devices = snapshot.data ?? [];
+                          if (devices.isEmpty) {
+                            return _scanning
+                                ? const _ScanningState()
+                                : _NothingFound(onRescan: _scan);
+                          }
+                          return ListView.separated(
+                            itemCount: devices.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: SageSpace.sm),
+                            itemBuilder: (ctx, i) => _DeviceTile(
+                              device: devices[i],
+                              onTap: () {
+                                final messenger = ScaffoldMessenger.of(context);
+                                Navigator.pop(context);
+                                _connectTo(messenger, devices[i]);
+                              },
+                            ),
+                          );
                         },
                       ),
-                    );
-                  },
-                ),
               ),
             ],
           ),
@@ -166,7 +191,8 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
 }
 
 class _ScanningState extends StatelessWidget {
-  const _ScanningState();
+  final String title;
+  const _ScanningState({this.title = 'Looking for your band…'});
 
   @override
   Widget build(BuildContext context) {
@@ -183,7 +209,7 @@ class _ScanningState extends StatelessWidget {
               motion: SageArtMotion.breathe,
             ),
             const SizedBox(height: SageSpace.lg),
-            Text('Looking for your band…', style: SageText.title()),
+            Text(title, style: SageText.title()),
             const SizedBox(height: SageSpace.xs),
             Text('Keep it close and switched on.', style: SageText.caption()),
           ],
@@ -254,5 +280,52 @@ class _DeviceTile extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Shown instead of the device list while Bluetooth is not ready.
+class _NotReady extends StatelessWidget {
+  final BandReadiness readiness;
+  const _NotReady({required this.readiness});
+
+  @override
+  Widget build(BuildContext context) {
+    switch (readiness) {
+      case BandReadiness.checking:
+        return const _ScanningState(title: 'Waiting for Bluetooth…');
+      case BandReadiness.unauthorized:
+        return SingleChildScrollView(
+          child: PermissionState(
+            kind: PermissionKind.bluetooth,
+            blocked: true,
+            compact: true,
+            onAllow: SystemSettings.openBluetooth,
+            onOpenSettings: SystemSettings.openBluetooth,
+          ),
+        );
+      case BandReadiness.unsupported:
+        return const SingleChildScrollView(
+          child: EmptyState(
+            art: SageArt.band,
+            title: 'This phone can\'t use a Sage Band',
+            message: 'It doesn\'t support Bluetooth Low Energy, which the '
+                'band needs. Everything else in Sage still works.',
+            compact: true,
+          ),
+        );
+      case BandReadiness.off:
+      case BandReadiness.ready:
+        return SingleChildScrollView(
+          child: EmptyState(
+            art: SageArt.band,
+            title: 'Bluetooth is off',
+            message: 'Switch Bluetooth on and Sage will find your band '
+                'automatically.',
+            compact: true,
+            actionLabel: 'Open Settings',
+            onAction: SystemSettings.openBluetooth,
+          ),
+        );
+    }
   }
 }

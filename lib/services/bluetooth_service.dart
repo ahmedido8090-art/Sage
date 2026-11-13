@@ -8,6 +8,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart' as fbp;
 
+import '../band/ble_characteristic_picker.dart';
 import '../models/health_data.dart';
 import 'data_storage_service.dart';
 
@@ -202,18 +203,24 @@ class BluetoothService {
 
       // Discover Services
       final services = await device.discoverServices();
-      fbp.BluetoothCharacteristic? rx;
 
-      // Find a read/notify characteristic (HM-10 / AT-09 generic)
+      // Pick the band's UART notify characteristic rather than the first
+      // readable one iOS happens to list (see band/ble_characteristic_picker).
+      final candidates = <BleCandidate>[];
+      final characteristics = <fbp.BluetoothCharacteristic>[];
       for (final s in services) {
         for (final c in s.characteristics) {
-          if (c.properties.notify || c.properties.read) {
-            rx = c;
-            break;
-          }
+          candidates.add(BleCandidate(
+            service: s.uuid.str,
+            characteristic: c.uuid.str,
+            notify: c.properties.notify,
+            read: c.properties.read,
+          ));
+          characteristics.add(c);
         }
-        if (rx != null) break;
       }
+      final pick = pickBleDataCharacteristic(candidates);
+      final rx = pick == null ? null : characteristics[pick];
 
       if (rx == null) throw Exception("No suitable characteristic found");
 
