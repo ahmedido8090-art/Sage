@@ -10,6 +10,9 @@ enum BandReadiness {
   /// Waiting on the system (permission prompt, adapter starting up).
   checking,
   ready,
+
+  /// Android: "Nearby devices" has not been granted yet; we can still ask.
+  permissionNeeded,
   off,
 
   /// The user said no to Bluetooth access; only Settings can change that.

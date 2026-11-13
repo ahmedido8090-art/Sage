@@ -12,11 +12,13 @@ import '../services/system_settings.dart';
 import '../theme/app_theme.dart';
 import '../theme/tokens.dart';
 import '../utils/friendly_error.dart';
+import '../widgets/ios_band_note.dart';
 import '../widgets/pressable.dart';
 import '../widgets/sage_feedback.dart';
 import '../widgets/sage_illustration.dart';
 import '../widgets/sage_states.dart';
 import '../widgets/state_copy.dart';
+import 'band_access.dart';
 import 'band_readiness.dart';
 
 /// Opens the band picker as a bottom sheet.
@@ -44,23 +46,25 @@ class _DevicePickerSheet extends StatefulWidget {
   State<_DevicePickerSheet> createState() => _DevicePickerSheetState();
 }
 
-class _DevicePickerSheetState extends State<_DevicePickerSheet> {
+class _DevicePickerSheetState extends State<_DevicePickerSheet>
+    with WidgetsBindingObserver {
   /// How long to show "looking" before concluding nothing is nearby.
   static const _scanWindow = Duration(seconds: 6);
 
   Timer? _scanTimer;
   bool _scanning = true;
 
-  /// iOS asks for Bluetooth permission the first time the adapter is looked
-  /// at, and can be switched off or denied, so scanning waits until the
-  /// system says it is ready. Android's flow asks for permissions elsewhere.
-  BandReadiness _readiness =
-      Platform.isIOS ? BandReadiness.checking : BandReadiness.ready;
+  /// Scanning waits until the system says Bluetooth is usable. iOS asks for
+  /// permission itself the first time the adapter is looked at; Android 12+
+  /// needs "Nearby devices" granted at runtime, so we ask for it here. Either
+  /// can also be switched off or denied.
+  BandReadiness _readiness = BandReadiness.checking;
   StreamSubscription<fbp.BluetoothAdapterState>? _adapterSub;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (Platform.isIOS) {
       _adapterSub = fbp.FlutterBluePlus.adapterState.listen((state) {
         if (!mounted) return;
@@ -72,7 +76,33 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
         if (becameReady) _scan();
       });
     } else {
-      _scan();
+      _checkAccess(ask: true);
+    }
+  }
+
+  /// Android: asks for (or just re-checks) the Nearby devices permission,
+  /// then scans once it is granted.
+  Future<void> _checkAccess({required bool ask}) async {
+    final access = await bandAccess(ask: ask);
+    if (!mounted) return;
+    final next = switch (access) {
+      BandAccess.granted => BandReadiness.ready,
+      BandAccess.askable => BandReadiness.permissionNeeded,
+      BandAccess.blocked => BandReadiness.unauthorized,
+    };
+    final becameReady =
+        next == BandReadiness.ready && _readiness != BandReadiness.ready;
+    setState(() => _readiness = next);
+    if (becameReady) _scan();
+  }
+
+  /// Back from system Settings: pick up a permission the user just granted.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed &&
+        Platform.isAndroid &&
+        _readiness != BandReadiness.ready) {
+      _checkAccess(ask: false);
     }
   }
 
@@ -88,6 +118,7 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _adapterSub?.cancel();
     _scanTimer?.cancel();
     widget.btService.stopScan();
@@ -130,7 +161,10 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
               const SizedBox(height: SageSpace.md),
               Expanded(
                 child: _readiness != BandReadiness.ready
-                    ? _NotReady(readiness: _readiness)
+                    ? _NotReady(
+                        readiness: _readiness,
+                        onAllow: () => _checkAccess(ask: true),
+                      )
                     : StreamBuilder<List<SageDevice>>(
                         stream: widget.btService.scanResults,
                         initialData: const [],
@@ -226,14 +260,19 @@ class _NothingFound extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      child: EmptyState.topic(
-        StateTopic.bands,
-        art: SageArt.band,
-        compact: true,
-        actionLabel: 'Scan again',
-        onAction: onRescan,
-        secondaryLabel: 'Bluetooth settings',
-        onSecondary: SystemSettings.openBluetooth,
+      child: Column(
+        children: [
+          EmptyState.topic(
+            StateTopic.bands,
+            art: SageArt.band,
+            compact: true,
+            actionLabel: 'Scan again',
+            onAction: onRescan,
+            secondaryLabel: 'Bluetooth settings',
+            onSecondary: SystemSettings.openBluetooth,
+          ),
+          const IosBandNote(),
+        ],
       ),
     );
   }
@@ -286,13 +325,22 @@ class _DeviceTile extends StatelessWidget {
 /// Shown instead of the device list while Bluetooth is not ready.
 class _NotReady extends StatelessWidget {
   final BandReadiness readiness;
-  const _NotReady({required this.readiness});
+  final VoidCallback onAllow;
+  const _NotReady({required this.readiness, required this.onAllow});
 
   @override
   Widget build(BuildContext context) {
     switch (readiness) {
       case BandReadiness.checking:
         return const _ScanningState(title: 'Waiting for Bluetooth…');
+      case BandReadiness.permissionNeeded:
+        return SingleChildScrollView(
+          child: PermissionState(
+            kind: PermissionKind.bluetooth,
+            compact: true,
+            onAllow: onAllow,
+          ),
+        );
       case BandReadiness.unauthorized:
         return SingleChildScrollView(
           child: PermissionState(

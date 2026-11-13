@@ -14,50 +14,54 @@ void main() {
     expect(normalizeBleUuid('{FFE1}'), '0000ffe1-0000-1000-8000-00805f9b34fb');
   });
 
-  test('picks the HM-10 UART even when a readable info characteristic is first',
-      () {
-    final i = pickBleDataCharacteristic([
-      c('180a', '2a29', read: true), // Device Information: manufacturer
-      c('180a', '2a24', read: true),
-      c('ffe0', 'ffe1', notify: true, read: true),
-    ]);
-    expect(i, 2);
+  test('a typical HM-10 style module picks its only characteristic', () {
+    expect(
+        pickBleDataCharacteristic(
+            [c('ffe0', 'ffe1', notify: true, read: true)]),
+        0);
   });
 
-  test('picks the UART over an earlier unrelated notifying characteristic', () {
-    final i = pickBleDataCharacteristic([
-      c('180f', '2a19', notify: true, read: true), // battery
-      c('fff0', 'fff4', notify: true),
-      c('ffe0', 'FFE1', notify: true),
-    ]);
-    expect(i, 2);
+  test('follows the order the device lists, as the original did', () {
+    // Two notifying characteristics: the first listed wins, exactly like the
+    // "first notify-or-read" rule that connected on iPhone.
+    expect(
+        pickBleDataCharacteristic([
+          c('fff0', 'fff4', notify: true),
+          c('ffe0', 'ffe1', notify: true),
+        ]),
+        0);
   });
 
-  test('recognises the Nordic UART TX characteristic', () {
-    final i = pickBleDataCharacteristic([
-      c('180a', '2a29', read: true),
-      c('6e400001-b5a3-f393-e0a9-e50e24dcca9e',
-          '6E400002-B5A3-F393-E0A9-E50E24DCCA9E'), // RX (write only)
-      c('6e400001-b5a3-f393-e0a9-e50e24dcca9e',
-          '6e400003-b5a3-f393-e0a9-e50e24dcca9e',
-          notify: true),
-    ]);
-    expect(i, 2);
+  test('skips a readable Device Information characteristic listed first', () {
+    expect(
+        pickBleDataCharacteristic([
+          c('180a', '2a29', read: true),
+          c('180a', '2a24', read: true),
+          c('ffe0', 'ffe1', notify: true, read: true),
+        ]),
+        2);
   });
 
-  test('falls back to any notifying characteristic that is not housekeeping',
-      () {
-    final i = pickBleDataCharacteristic([
-      c('1801', '2a05', notify: true), // Service Changed
-      c('180f', '2a19', notify: true), // Battery Level
-      c('fff0', 'fff4', notify: true),
-    ]);
-    expect(i, 2);
+  test('prefers a notifying characteristic over a readable one before it', () {
+    expect(
+        pickBleDataCharacteristic([
+          c('fff0', 'fff1', read: true),
+          c('ffe0', 'ffe1', notify: true),
+        ]),
+        1);
   });
 
-  test(
-      'uses a readable characteristic only as a last resort, and not an info one',
-      () {
+  test('skips battery level and service changed notifications', () {
+    expect(
+        pickBleDataCharacteristic([
+          c('1801', '2a05', notify: true),
+          c('180f', '2a19', notify: true, read: true),
+          c('fff0', 'fff4', notify: true),
+        ]),
+        2);
+  });
+
+  test('reads a custom readable characteristic only as a last resort', () {
     expect(
         pickBleDataCharacteristic([
           c('180a', '2a29', read: true),
@@ -70,13 +74,5 @@ void main() {
   test('returns null when nothing can carry data', () {
     expect(pickBleDataCharacteristic(const []), isNull);
     expect(pickBleDataCharacteristic([c('fff0', 'fff2')]), isNull);
-  });
-
-  test('a notify-only UART still beats a readable one listed before it', () {
-    final i = pickBleDataCharacteristic([
-      c('fff0', 'fff1', read: true),
-      c('ffe0', 'ffe1', notify: true),
-    ]);
-    expect(i, 1);
   });
 }

@@ -9,6 +9,7 @@ import 'package:flutter_bluetooth_serial/flutter_bluetooth_serial.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart' as fbp;
 
 import '../band/ble_characteristic_picker.dart';
+import '../band/band_line_parser.dart';
 import '../models/health_data.dart';
 import 'data_storage_service.dart';
 
@@ -292,19 +293,11 @@ class BluetoothService {
   void _parseLine(String line) {
     // Expected: HR:XX,AX:XXXXX,AY:XXXXX,AZ:XXXXX,GX:XXXXX,GY:XXXXX,GZ:XXXXX,ST:XXXXX
     try {
-      final parts = line.split(',');
-      int? hr;
-      int? st;
-
-      for (final p in parts) {
-        final kv = p.split(':');
-        if (kv.length != 2) continue;
-        final key = kv[0].trim();
-        final value = kv[1].trim();
-
-        if (key == 'HR') hr = int.tryParse(value);
-        if (key == 'ST') st = int.tryParse(value);
-      }
+      // Both key styles the firmware has used (HR/ST and BPM/STEPS) are read
+      // by band/band_line_parser.dart.
+      final parsed = parseBandLine(line);
+      final hr = parsed.heartRate;
+      final st = parsed.steps;
 
       if (hr != null) _heartRate = hr;
       if (st != null) _steps = st;

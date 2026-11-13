@@ -3,15 +3,12 @@
 // Chooses which BLE characteristic carries the band's data. Pure and free of
 // the Bluetooth plugin so the rules can be tested.
 //
-// The band streams text lines over a serial-over-BLE service. iOS lists a
-// device's services in no promised order and exposes generic ones (such as
-// Device Information) that have readable characteristics, so "the first
-// readable thing" can be the wrong one and the band would then connect but
-// never deliver a reading. Preference order:
-//   1. a known UART notify characteristic (HM-10/AT-09 FFE1, Nordic UART TX)
-//   2. any other characteristic that notifies
-//   3. a readable characteristic, as a last resort, outside the generic
-//      information services
+// This follows the order that worked on iPhone: the first characteristic that
+// can notify (falling back to the first readable one), with one safeguard.
+// iOS may list generic services such as Device Information, whose readable
+// characteristics are never band data, so those and the battery level are
+// skipped. A characteristic that notifies is preferred over one that can only
+// be read, because only a notifying one can stream.
 class BleCandidate {
   final String service;
   final String characteristic;
@@ -36,11 +33,6 @@ String normalizeBleUuid(String uuid) {
   return u;
 }
 
-final _knownUartNotify = {
-  normalizeBleUuid('ffe1'), // HM-10 / AT-09 and clones
-  '6e400003-b5a3-f393-e0a9-e50e24dcca9e', // Nordic UART TX (device -> app)
-};
-
 // Generic services that never carry band data: Generic Access, Generic
 // Attribute, Device Information.
 final _genericServices = {
@@ -58,13 +50,6 @@ final _housekeeping = {
 /// Index into [candidates] of the characteristic to listen to, or null if
 /// none can carry data.
 int? pickBleDataCharacteristic(List<BleCandidate> candidates) {
-  for (var i = 0; i < candidates.length; i++) {
-    final c = candidates[i];
-    if (c.notify &&
-        _knownUartNotify.contains(normalizeBleUuid(c.characteristic))) {
-      return i;
-    }
-  }
   for (var i = 0; i < candidates.length; i++) {
     final c = candidates[i];
     if (c.notify &&
