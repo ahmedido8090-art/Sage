@@ -17,7 +17,15 @@ class Pressable extends StatefulWidget {
   final VoidCallback? onTap;
   final Widget child;
 
-  const Pressable({super.key, required this.onTap, required this.child});
+  /// Spoken label for screen readers. Defaults to the visible text of [child].
+  final String? semanticLabel;
+
+  const Pressable({
+    super.key,
+    required this.onTap,
+    required this.child,
+    this.semanticLabel,
+  });
 
   @override
   State<Pressable> createState() => _PressableState();
@@ -28,7 +36,16 @@ class _PressableState extends State<Pressable> {
 
   @override
   Widget build(BuildContext context) {
+    return Semantics(
+      button: widget.onTap != null,
+      label: widget.semanticLabel,
+      child: _buildGesture(),
+    );
+  }
+
+  Widget _buildGesture() {
     return GestureDetector(
+      behavior: HitTestBehavior.opaque,
       onTap: widget.onTap,
       onTapDown:
           widget.onTap == null ? null : (_) => setState(() => _pressed = true),
@@ -37,7 +54,9 @@ class _PressableState extends State<Pressable> {
       onTapCancel:
           widget.onTap == null ? null : () => setState(() => _pressed = false),
       child: AnimatedScale(
-        scale: _pressed ? SageMotion.pressScale : 1.0,
+        scale: _pressed && !MediaQuery.disableAnimationsOf(context)
+            ? SageMotion.pressScale
+            : 1.0,
         duration: SageMotion.pressDuration,
         curve: SageMotion.pressCurve,
         child: widget.child,

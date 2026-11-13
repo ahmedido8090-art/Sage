@@ -1,27 +1,26 @@
 // screens/dashboard_screen.dart
 //
-// FIX: Tab switch animation changed from sequential (await reverse → swap →
-// forward) to a simultaneous crossfade driven by AnimatedSwitcher.
-//
-// The old flow:
-//   1. await _tabFadeCtrl.reverse()   ← 220ms during which bottom nav is
-//                                        unresponsive to further taps
-//   2. setState(swap tab)
-//   3. _tabFadeCtrl.forward()
-//
-// This felt sluggish and occasionally swallowed double-taps. The new
-// approach wraps the tab body in an AnimatedSwitcher keyed on _currentIndex,
-// so Flutter handles the crossfade automatically with no await and no
-// blocking. The AnimationController is removed entirely.
-import 'dart:io';
+// Signed-in shell: the Home tab plus Wellness, Insights and Profile, kept
+// alive in an IndexedStack so switching tabs never loses scroll or form state.
+import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import '../models/health_data.dart';
+import '../notifications/notification_category.dart';
+import '../notifications/notification_service.dart';
+import '../band/band_monitor.dart';
+import '../band/band_picker.dart';
+import '../widgets/band_intro_card.dart';
+import '../widgets/band_offline_notice.dart';
+import '../widgets/notification_prompt_card.dart';
+import '../widgets/sage_feedback.dart';
 import '../services/wellness_quote_service.dart';
 import '../services/wellness_score_service.dart';
 import '../services/user_service.dart';
 import '../services/bluetooth_service.dart';
 import '../services/bella_service.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
+import '../widgets/sage_card.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/sage_hero_card.dart';
 import '../widgets/metric_tile.dart';
@@ -29,6 +28,7 @@ import '../widgets/wellness_activity_tile.dart';
 import '../widgets/quote_section.dart';
 import '../widgets/sage_bottom_nav.dart';
 import '../widgets/shimmer_loader.dart';
+import 'band_history_screen.dart';
 import 'profile_screen.dart';
 import 'wellness_screen.dart';
 import 'insights_screen.dart';
@@ -50,62 +50,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final ValueNotifier<int> _wellnessReloadSignal = ValueNotifier(0);
   final ValueNotifier<int> _insightsReloadSignal = ValueNotifier(0);
 
-  HealthData healthData = HealthData(
-    heartRate: 0,
-    steps: 0,
-    isConnected: false,
-    calories: 0,
-    sleepHours: 0,
-  );
+  /// Tabs are built once and reused, so rebuilding the shell never re-runs
+  /// the build of Wellness, Insights or Profile.
+  final Map<int, Widget> _tabCache = {};
 
   bool _initialLoading = true;
 
   late Quote currentQuote;
   final BluetoothService _bt = BluetoothService.instance;
   final BellaService _bella = BellaService();
-  late final VoidCallback _connListener;
+  final Set<int> _visitedTabs = {0};
+  final NotificationService _notifications = NotificationService.instance;
+  bool _promptHidden = false;
+  bool _bandIntroHidden = false;
 
   @override
   void initState() {
     super.initState();
 
-    currentQuote = WellnessQuoteService.getQuoteForState(
-      lastCheckin: _bella.lastCheckin,
-      lastSleep: _bella.lastNightSleep,
-      avgSleepQuality: _bella.averageSleepQuality(),
-      totalActivityMinutesToday: _bella.sessionMinutesToday('meditation') +
-          _bella.sessionMinutesToday('walking') +
-          _bella.sessionsToday('breathwork') * 5 +
-          _bella.sessionMinutesToday('sleep_sounds'),
-    );
+    currentQuote = _pickQuote();
 
-    _connListener = () {
+    _notifications.tapped.addListener(_onNotificationTap);
+    BellaUserData.dataVersion.addListener(_onDataCleared);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      setState(() {
-        healthData = HealthData(
-          heartRate: healthData.heartRate,
-          steps: healthData.steps,
-          isConnected: _bt.isConnected.value,
-          calories: healthData.calories,
-          sleepHours: healthData.sleepHours,
-        );
-      });
-    };
-    _bt.isConnected.addListener(_connListener);
-
-    _bt.dataStream.listen((data) {
-      if (!mounted) return;
-      setState(() {
-        _initialLoading = false;
-        healthData = HealthData(
-          heartRate: data.heartRate,
-          steps: data.steps,
-          isConnected: data.isConnected,
-          calories: data.calories,
-          sleepHours: healthData.sleepHours,
-        );
-      });
+      _onNotificationTap(); // app launched from a notification
+      _notifications.refresh();
     });
+
+    // The first band snapshot ends the skeleton early; otherwise it ends on
+    // a timer, so a screen with no band never stays in "loading".
+    BandMonitor.instance.snapshot.addListener(_onFirstBandSnapshot);
 
     Future.delayed(const Duration(milliseconds: 1400), () {
       if (mounted) setState(() => _initialLoading = false);
@@ -114,7 +89,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   void dispose() {
-    _bt.isConnected.removeListener(_connListener);
+    _notifications.tapped.removeListener(_onNotificationTap);
+    BellaUserData.dataVersion.removeListener(_onDataCleared);
+    BandMonitor.instance.snapshot.removeListener(_onFirstBandSnapshot);
+    _wellnessReloadSignal.dispose();
+    _insightsReloadSignal.dispose();
     super.dispose();
   }
 
@@ -123,27 +102,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return user?.username ?? UserService().currentUser ?? 'User';
   }
 
-  double get _bmi {
-    final user = UserService().currentUserObject;
-    if (user != null && user.height > 0 && user.weight > 0) {
-      final h = user.height / 100;
-      return user.weight / (h * h);
-    }
-    return 22.5;
-  }
-
-  String get _bmiCategory {
-    final bmi = _bmi;
-    if (bmi < 18.5) return 'Underweight';
-    if (bmi < 25) return 'Normal';
-    if (bmi < 30) return 'Overweight';
-    return 'Obese';
-  }
-
-  void _refreshFromBella() {
-    if (!mounted) return;
-    setState(() {
-      currentQuote = WellnessQuoteService.getQuoteForState(
+  Quote _pickQuote() => WellnessQuoteService.getQuoteForState(
         lastCheckin: _bella.lastCheckin,
         lastSleep: _bella.lastNightSleep,
         avgSleepQuality: _bella.averageSleepQuality(),
@@ -152,7 +111,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
             _bella.sessionsToday('breathwork') * 5 +
             _bella.sessionMinutesToday('sleep_sounds'),
       );
-    });
+
+  void _refreshFromBella() {
+    if (!mounted) return;
+    setState(() => currentQuote = _pickQuote());
+    // What the user just logged changes which nudges still make sense today.
+    _notifications.refresh();
+  }
+
+  /// The user wiped their logged data: tabs that cache what they loaded
+  /// reload, and Home recomputes.
+  void _onDataCleared() {
+    _wellnessReloadSignal.value++;
+    _insightsReloadSignal.value++;
+    _refreshFromBella();
+  }
+
+  void _onFirstBandSnapshot() {
+    if (_initialLoading &&
+        mounted &&
+        BandMonitor.instance.current.lastReadingAt != null) {
+      setState(() => _initialLoading = false);
+    }
+  }
+
+  /// Opens the screen a tapped notification is about.
+  void _onNotificationTap() {
+    final category = _notifications.tapped.value;
+    if (category == null || !mounted) return;
+    _notifications.tapped.value = null;
+    switch (category) {
+      case NotificationCategory.hydration:
+        _push(const PurePlateScreen());
+      case NotificationCategory.sleep:
+        _push(const ZZZifyScreen());
+      case NotificationCategory.checkin:
+        _push(const DailyCheckinScreen());
+      case NotificationCategory.movement:
+      case NotificationCategory.streak:
+        _switchTab(1);
+    }
+  }
+
+  bool get _showNotificationPrompt {
+    if (_promptHidden) return false;
+    final prefs = _notifications.prefs;
+    return !prefs.enabled && !prefs.promptDismissed;
+  }
+
+  Future<void> _enableNotifications() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await _notifications.enable();
+    if (!mounted) return;
+    setState(() => _promptHidden = ok);
+    messenger.showSnackBar(SnackBar(
+      content: Text(ok
+          ? 'Nudges are on. You can fine-tune them in Profile.'
+          : 'No problem. You can turn them on any time in Profile.'),
+    ));
+    if (!ok) await _dismissNotificationPrompt();
+  }
+
+  Future<void> _dismissNotificationPrompt() async {
+    await _notifications.dismissPrompt();
+    if (mounted) setState(() => _promptHidden = true);
   }
 
   String _timeOfDayGreeting() {
@@ -162,10 +184,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return 'evening';
   }
 
-  String _heartRateStatusLabel(int hr) {
-    if (hr == 0) return 'No reading yet';
-    if (hr > 100) return 'Elevated';
-    if (hr < 60) return 'Resting · low';
+  String _heartRateStatusLabel(BandSnapshot band) {
+    final live = band.liveHeartRate;
+    if (live == null) {
+      return band.heartRate == null
+          ? 'No reading yet'
+          : 'Last reading ${band.heartRate} bpm';
+    }
+    if (live > 100) return 'Elevated';
+    if (live < 60) return 'Resting · low';
     return 'Resting · steady';
   }
 
@@ -173,26 +200,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (_bt.isConnected.value) {
       await _bt.disconnect();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Sage Band Disconnected'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      SageFeedback.info(
+          context, 'Your band is disconnected. Reconnect any time.');
     } else {
       _showDevicePicker();
     }
   }
 
-  void _showDevicePicker() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => _DevicePickerSheet(btService: _bt),
-    );
-  }
+  void _showDevicePicker() => showBandPicker(context);
 
   List<String> _flaggedConditionsToday() {
     final conditions = UserService().currentUserObject?.chronicDiseases ?? [];
@@ -229,11 +244,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     final flagged = _flaggedConditionsToday();
     if (flagged.isNotEmpty) {
-      if (flagged.length == 1) return '⚠ ${flagged.first} reading flagged';
+      if (flagged.length == 1) return '${flagged.first} reading flagged';
       final label = flagged.length == 2
           ? '${flagged[0]} & ${flagged[1]}'
           : '${flagged.sublist(0, flagged.length - 1).join(', ')} & ${flagged.last}';
-      return '⚠ $label flagged';
+      return '$label flagged';
     }
 
     if (stalestDays == 999 && stalestCondition != null) {
@@ -287,7 +302,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _switchTab(int i) {
     if (i == _currentIndex) return;
-    setState(() => _currentIndex = i);
+    setState(() {
+      _currentIndex = i;
+      _visitedTabs.add(i);
+    });
     if (i == 0) _refreshFromBella();
     if (i == 1) _wellnessReloadSignal.value++;
     if (i == 2) _insightsReloadSignal.value++;
@@ -297,17 +315,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: SageColors.linen,
-      body: AnimatedSwitcher(
-        // Crossfade between tabs with no blocking await.
-        // The key on each child forces AnimatedSwitcher to treat index
-        // changes as a new widget, triggering the fade.
-        duration: const Duration(milliseconds: 180),
-        switchInCurve: Curves.easeOut,
-        switchOutCurve: Curves.easeIn,
-        child: KeyedSubtree(
-          key: ValueKey(_currentIndex),
-          child: _buildCurrentScreen(),
-        ),
+      body: IndexedStack(
+        index: _currentIndex,
+        children: [
+          for (var i = 0; i < 4; i++)
+            TickerMode(
+              enabled: i == _currentIndex,
+              child: _visitedTabs.contains(i)
+                  ? _buildTab(i)
+                  : const SizedBox.shrink(),
+            ),
+        ],
       ),
       bottomNavigationBar: SageBottomNav(
         currentIndex: _currentIndex,
@@ -316,29 +334,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildCurrentScreen() {
-    switch (_currentIndex) {
-      case 0:
-        return _buildDashboardTab();
-      case 1:
-        return WellnessScreen(reloadSignal: _wellnessReloadSignal);
-      case 2:
-        return InsightsScreen(reloadSignal: _insightsReloadSignal);
-      case 3:
-        return const ProfileScreen();
-      default:
-        return _buildDashboardTab();
-    }
+  Widget _buildTab(int index) {
+    // The Home tab depends on this state, so it is rebuilt on purpose; the
+    // others are created once and refresh through their reload signals.
+    if (index == 0) return _buildDashboardTab();
+    return _tabCache.putIfAbsent(index, () {
+      switch (index) {
+        case 1:
+          return WellnessScreen(reloadSignal: _wellnessReloadSignal);
+        case 2:
+          return InsightsScreen(reloadSignal: _insightsReloadSignal);
+        default:
+          return const ProfileScreen();
+      }
+    });
   }
 
   Widget _buildDashboardTab() {
-    final int safeHeart = healthData.heartRate is double
-        ? (healthData.heartRate as double).toInt()
-        : healthData.heartRate;
-    final int safeSteps = healthData.steps is double
-        ? (healthData.steps as double).toInt()
-        : healthData.steps;
-
     return SafeArea(
       bottom: false,
       child: SingleChildScrollView(
@@ -351,19 +363,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text('sage', style: SageText.wordmark()),
-                GestureDetector(
-                  onTap: () => _switchTab(3),
-                  child: CircleAvatar(
-                    radius: 17,
-                    backgroundColor: SageColors.moss,
-                    child: Text(
-                      _userDisplayName.isNotEmpty
-                          ? _userDisplayName[0].toUpperCase()
-                          : '?',
-                      style: TextStyle(
-                        color: SageColors.linen,
-                        fontWeight: FontWeight.w600,
-                        fontSize: 13,
+                Semantics(
+                  button: true,
+                  label: 'Open profile',
+                  child: InkResponse(
+                    onTap: () => _switchTab(3),
+                    radius: kSageMinTapTarget / 2,
+                    child: SizedBox(
+                      width: kSageMinTapTarget,
+                      height: kSageMinTapTarget,
+                      child: Center(
+                        child: ExcludeSemantics(
+                          child: CircleAvatar(
+                            radius: 17,
+                            backgroundColor: SageColors.moss,
+                            child: Text(
+                              _userDisplayName.isNotEmpty
+                                  ? _userDisplayName[0].toUpperCase()
+                                  : '?',
+                              style: SageText.label(color: SageColors.linen),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ),
@@ -373,73 +394,105 @@ class _DashboardScreenState extends State<DashboardScreen> {
             const SizedBox(height: 18),
             Text(
               'Good ${_timeOfDayGreeting()}, $_userDisplayName',
-              style: TextStyle(color: SageColors.inkSoft, fontSize: 13),
+              style: SageText.caption().copyWith(fontSize: 13),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: SageSpace.xs),
             Text('Health Sync Hub', style: SageText.headline()),
             const SizedBox(height: 20),
 
-            // ── Hero card or shimmer
-            if (_initialLoading)
-              const ShimmerHeroCard()
-            else
-              SageHeroCard(
-                isConnected: healthData.isConnected,
-                batteryLevel: healthData.batteryLevel,
-                heartRate: safeHeart,
-                subLabel: _heartRateStatusLabel(safeHeart),
-                onConnectPressed: _handleConnectPress,
-              ),
-
-            const SizedBox(height: 20),
-
-            // ── Metric tiles or shimmers
-            if (_initialLoading)
-              Row(
-                children: const [
-                  Expanded(child: ShimmerMetricTile()),
-                  SizedBox(width: 10),
-                  Expanded(child: ShimmerMetricTile()),
-                ],
-              )
-            else
-              Row(
+            // ── Hero card and metric tiles (or shimmers). Only this block
+            // listens to the band.
+            ValueListenableBuilder<BandSnapshot>(
+              valueListenable: BandMonitor.instance.snapshot,
+              builder: (context, band, _) => Column(
                 children: [
-                  Expanded(
-                    child: MetricTile(
-                      icon: const Icon(Icons.directions_walk),
-                      value: '$safeSteps',
-                      label: 'Steps today',
+                  if (_initialLoading)
+                    const ShimmerHeroCard()
+                  else
+                    SageHeroCard(
+                      isConnected: band.connected,
+                      heartRate: band.liveHeartRate ?? 0,
+                      subLabel: _heartRateStatusLabel(band),
+                      onConnectPressed: _handleConnectPress,
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: MetricTile(
-                      icon: const Icon(Icons.local_fire_department),
-                      value: healthData.calories.toStringAsFixed(0),
-                      label: 'Calories',
+                  const SizedBox(height: 20),
+                  if (_initialLoading)
+                    Row(
+                      children: const [
+                        Expanded(child: ShimmerMetricTile()),
+                        SizedBox(width: 10),
+                        Expanded(child: ShimmerMetricTile()),
+                      ],
+                    )
+                  else
+                    Row(
+                      children: [
+                        Expanded(
+                          child: MetricTile(
+                            icon: const Icon(Icons.directions_walk),
+                            value: band.stepsToday?.toString() ?? '—',
+                            label: 'Steps today',
+                            onTap: () => _push(const BandHistoryScreen()),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: MetricTile(
+                            icon: const Icon(Icons.local_fire_department),
+                            value: band.caloriesEstimate?.toString() ?? '—',
+                            label: 'Calories (est.)',
+                            onTap: () => _push(const BandHistoryScreen()),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
                 ],
               ),
+            ),
+            if (!_initialLoading)
+              ValueListenableBuilder<BandSnapshot>(
+                valueListenable: BandMonitor.instance.snapshot,
+                builder: (context, band, _) {
+                  final firstTime = !band.everSeen &&
+                      !_bandIntroHidden &&
+                      !_bella.bandIntroDismissed;
+                  return Padding(
+                    padding: const EdgeInsets.only(top: SageSpace.lg),
+                    child: firstTime
+                        ? BandIntroCard(
+                            onConnect: () => showBandPicker(context),
+                            onDismiss: () async {
+                              await _bella.dismissBandIntro();
+                              if (mounted)
+                                setState(() => _bandIntroHidden = true);
+                            },
+                          )
+                        : const BandOfflineNotice(
+                            featureName: 'Your wellness tools',
+                            whatWorks: 'Meditation, breathwork, sleep sounds, '
+                                'check-ins and all your logging work without it.',
+                          ),
+                  );
+                },
+              ),
+
+            if (_showNotificationPrompt) ...[
+              const SizedBox(height: 24),
+              NotificationPromptCard(
+                onEnable: _enableNotifications,
+                onDismiss: _dismissNotificationPrompt,
+              ),
+            ],
 
             const SizedBox(height: 24),
 
-            Text(
-              'BELLA',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
-                color: SageColors.inkSoft,
-              ),
-            ),
+            const SectionHeader(title: 'Daily care'),
             const SizedBox(height: 12),
 
             // ── Bella activity tiles
             if (_initialLoading)
               SizedBox(
-                height: 126,
+                height: 132,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   children: const [
@@ -453,7 +506,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               )
             else
               SizedBox(
-                height: 126,
+                height: 132,
                 child: ListView(
                   scrollDirection: Axis.horizontal,
                   children: [
@@ -499,130 +552,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             QuoteSection(
               text: currentQuote.text,
               author: currentQuote.author,
-              onRefresh: () => setState(() {
-                currentQuote = WellnessQuoteService.getQuoteForState(
-                  lastCheckin: _bella.lastCheckin,
-                  lastSleep: _bella.lastNightSleep,
-                  avgSleepQuality: _bella.averageSleepQuality(),
-                  totalActivityMinutesToday:
-                      _bella.sessionMinutesToday('meditation') +
-                          _bella.sessionMinutesToday('walking') +
-                          _bella.sessionsToday('breathwork') * 5 +
-                          _bella.sessionMinutesToday('sleep_sounds'),
-                );
-              }),
+              onRefresh: _refreshFromBella,
             ),
           ],
         ),
       ),
     );
-  }
-}
-
-// ── Device picker bottom sheet ─────────────────────────────────────────────
-class _DevicePickerSheet extends StatefulWidget {
-  final BluetoothService btService;
-  const _DevicePickerSheet({required this.btService});
-
-  @override
-  State<_DevicePickerSheet> createState() => _DevicePickerSheetState();
-}
-
-class _DevicePickerSheetState extends State<_DevicePickerSheet> {
-  @override
-  void initState() {
-    super.initState();
-    widget.btService.startScan();
-  }
-
-  @override
-  void dispose() {
-    widget.btService.stopScan();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      height: 400,
-      color: SageColors.linen,
-      child: Column(
-        children: [
-          Text('Select Your Band', style: SageText.headline()),
-          const SizedBox(height: 10),
-          if (Platform.isAndroid)
-            Text(
-              "If you don't see your device, pair it in Android Bluetooth Settings first.",
-              style: TextStyle(color: SageColors.inkSoft, fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
-          const Divider(),
-          Expanded(
-            child: StreamBuilder<List<SageDevice>>(
-              stream: widget.btService.scanResults,
-              initialData: const [],
-              builder: (context, snapshot) {
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                final devices = snapshot.data ?? [];
-                if (devices.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(color: SageColors.moss),
-                        const SizedBox(height: 16),
-                        const Text('Scanning for devices...'),
-                      ],
-                    ),
-                  );
-                }
-                return ListView.builder(
-                  itemCount: devices.length,
-                  itemBuilder: (ctx, i) {
-                    final dev = devices[i];
-                    return ListTile(
-                      leading: Icon(
-                        dev.isBle ? Icons.bluetooth : Icons.bluetooth_searching,
-                        color: SageColors.moss,
-                      ),
-                      title:
-                          Text(dev.name.isEmpty ? 'Unknown Device' : dev.name),
-                      subtitle: Text(dev.id),
-                      trailing: const Icon(Icons.chevron_right),
-                      onTap: () {
-                        Navigator.pop(context);
-                        _connectTo(dev);
-                      },
-                    );
-                  },
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _connectTo(SageDevice device) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Connecting to ${device.name}...')));
-    try {
-      await widget.btService.connect(device);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Connected successfully!'),
-        backgroundColor: SageColors.moss,
-      ));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Connection failed: $e'),
-        backgroundColor: SageColors.clay,
-      ));
-    }
   }
 }

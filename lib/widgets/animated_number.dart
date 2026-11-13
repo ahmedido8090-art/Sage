@@ -49,6 +49,14 @@ class _AnimatedNumberState extends State<AnimatedNumber>
   void didUpdateWidget(covariant AnimatedNumber oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.value != widget.value) {
+      if (MediaQuery.disableAnimationsOf(context)) {
+        // Reduced motion: show the new value straight away.
+        _anim = Tween<double>(
+          begin: widget.value.toDouble(),
+          end: widget.value.toDouble(),
+        ).animate(CurvedAnimation(parent: _ctrl, curve: widget.curve));
+        return;
+      }
       _anim = Tween<double>(
         begin: oldWidget.value.toDouble(),
         end: widget.value.toDouble(),
@@ -118,6 +126,14 @@ class _AnimatedDoubleState extends State<AnimatedDouble>
   void didUpdateWidget(covariant AnimatedDouble oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.value != widget.value) {
+      if (MediaQuery.disableAnimationsOf(context)) {
+        // Reduced motion: show the new value straight away.
+        _anim = Tween<double>(
+          begin: widget.value.toDouble(),
+          end: widget.value.toDouble(),
+        ).animate(CurvedAnimation(parent: _ctrl, curve: widget.curve));
+        return;
+      }
       _anim = Tween<double>(begin: oldWidget.value, end: widget.value)
           .animate(CurvedAnimation(parent: _ctrl, curve: widget.curve));
       _ctrl

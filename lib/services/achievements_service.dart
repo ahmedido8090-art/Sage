@@ -27,6 +27,7 @@ import 'package:material_ui/material_ui.dart';
 import 'bella_service.dart';
 import 'user_service.dart';
 import '../models/bella_data.dart';
+import '../utils/health_metrics.dart';
 
 /// A fully computed achievement — no nulls, safe to render directly.
 class Achievement {
@@ -68,12 +69,17 @@ class AchievementsService {
   /// achievement in this pass agrees on what's already been recorded.
   Map<String, DateTime> _unlockLog = const {};
 
+  /// Unlocks first seen during the current compute() pass, persisted in one
+  /// write at the end so simultaneous unlocks can't overwrite each other.
+  final Map<String, DateTime> _newUnlocks = {};
+
   /// Computes the full achievement list from live Bella data.
   /// [sessions] should be `BellaService().getSessions()` (all types) — the
   /// caller fetches it so this stays synchronous and so the caller (e.g.
   /// InsightsScreen) reuses the exact same list it displays elsewhere.
   List<Achievement> compute(List<WellnessSession> sessions) {
     _unlockLog = _bella.getAchievementUnlocks();
+    _newUnlocks.clear();
     final meditation = sessions.where((s) => s.type == 'meditation').toList();
     final walking = sessions.where((s) => s.type == 'walking').toList();
     final breathwork = sessions.where((s) => s.type == 'breathwork').toList();
@@ -523,6 +529,7 @@ class AchievementsService {
       ),
     ];
 
+    _bella.recordAchievementUnlocks(Map.of(_newUnlocks));
     return base;
   }
 
@@ -536,7 +543,7 @@ class AchievementsService {
     if (entries.isEmpty) return 0;
     final byDay = <String, int>{};
     for (final w in entries) {
-      final key = _dateKey(w.time);
+      final key = dayKey(w.time);
       byDay[key] = (byDay[key] ?? 0) + w.milliliters;
     }
     return byDay.values.where((total) => total >= target).length;
@@ -557,13 +564,10 @@ class AchievementsService {
     if (isUnlocked) {
       unlockedAt = _unlockLog[id];
       if (unlockedAt == null) {
-        // First time this id has ever been seen unlocked — record it once,
-        // now, and never again (recordAchievementUnlock no-ops if a date
-        // already exists). Fire-and-forget: compute() stays synchronous,
-        // and a write that loses a race with a fast double-call just costs
-        // a few minutes of accuracy on a single achievement, not a crash.
+        // First time this id has been seen unlocked: remember it now and
+        // persist the whole batch once compute() finishes.
         unlockedAt = DateTime.now();
-        _bella.recordAchievementUnlock(id, unlockedAt);
+        _newUnlocks[id] = unlockedAt;
       }
     }
     return Achievement(
@@ -578,25 +582,11 @@ class AchievementsService {
     );
   }
 
-  String _dateKey(DateTime d) => '${d.year}-${d.month}-${d.day}';
-
   int _distinctDayCount(List<WellnessSession> sessions) =>
-      sessions.map((s) => _dateKey(s.date)).toSet().length;
+      sessions.map((s) => dayKey(s.date)).toSet().length;
 
-  int _currentStreak(List<WellnessSession> sessions) {
-    final days = sessions.map((s) => _dateKey(s.date)).toSet();
-    int streak = 0;
-    var cursor = DateTime.now();
-    for (int i = 0; i < 365; i++) {
-      if (days.contains(_dateKey(cursor))) {
-        streak++;
-        cursor = cursor.subtract(const Duration(days: 1));
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
+  int _currentStreak(List<WellnessSession> sessions) =>
+      streakEndingToday(sessions.map((s) => dayKey(s.date)).toSet());
 
   int _longestStreak(List<WellnessSession> sessions) {
     if (sessions.isEmpty) return 0;

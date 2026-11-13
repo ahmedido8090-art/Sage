@@ -1,11 +1,13 @@
 // screens/breathwork_screen.dart
 
+import '../widgets/band_offline_notice.dart';
+import '../band/band_monitor.dart';
+import '../theme/tokens.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
-import '../services/bluetooth_service.dart';
 import '../services/bella_service.dart';
 import '../services/user_service.dart';
 import '../theme/app_theme.dart';
@@ -143,7 +145,6 @@ class BreathworkScreen extends StatefulWidget {
 class _BreathworkScreenState extends State<BreathworkScreen>
     with TickerProviderStateMixin {
   // ── Services ───────────────────────────────────────────────────────────────
-  final BluetoothService _bt = BluetoothService.instance;
   final BellaService _bella = BellaService();
   // Two players: one for inhale tone, one for exhale tone, so they never
   // cancel each other mid-playback.
@@ -405,9 +406,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
     _dailySessions = _bella.sessionsToday('breathwork');
     _loadBellaContext();
 
-    _bt.dataStream.listen((data) {
-      if (mounted) setState(() => _currentHeartRate = data.heartRate);
-    });
+    BandMonitor.instance.snapshot.addListener(_onBand);
 
     _orbController =
         AnimationController(vsync: this, duration: const Duration(seconds: 4));
@@ -553,6 +552,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
 
   @override
   void dispose() {
+    BandMonitor.instance.snapshot.removeListener(_onBand);
     _sessionTimer?.cancel();
     _orbController.dispose();
     _glowController.dispose();
@@ -723,6 +723,16 @@ class _BreathworkScreenState extends State<BreathworkScreen>
   // Helpers
   // ─────────────────────────────────────────────────────────────────────────
 
+  /// Only the live heart rate counts: 0 means the band was not delivering.
+  void _onBand() {
+    if (!mounted) return;
+    final hr = BandMonitor.instance.current.liveHeartRate ?? 0;
+    if (hr != _currentHeartRate) setState(() => _currentHeartRate = hr);
+  }
+
+  /// Heart rate was measured both at the start and the end of the session.
+  bool get _hasHeartData => _initialHeartRate > 0 && _currentHeartRate > 0;
+
   double _calmScore() {
     final change = _initialHeartRate - _currentHeartRate;
     if (_initialHeartRate == 0) return 0.5;
@@ -741,6 +751,10 @@ class _BreathworkScreenState extends State<BreathworkScreen>
   }
 
   String _calmInsight() {
+    if (!_hasHeartData) {
+      return 'Heart rate wasn\'t tracked this time because your band wasn\'t '
+          'connected. Your practice still counts.';
+    }
     final change = _initialHeartRate - _currentHeartRate;
     if (change > 10) {
       return 'Heart rate dropped $change bpm — your nervous system responded well.';
@@ -845,7 +859,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                   margin: const EdgeInsets.only(bottom: 14),
                   decoration: BoxDecoration(
                     color: SageColors.clay.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: SageRadius.round(12),
                     border: Border.all(
                         color: SageColors.clay.withValues(alpha: 0.25)),
                   ),
@@ -872,7 +886,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                   margin: const EdgeInsets.only(bottom: 14),
                   decoration: BoxDecoration(
                     color: SageColors.amber.withValues(alpha: 0.08),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: SageRadius.round(12),
                     border: Border.all(
                         color: SageColors.amber.withValues(alpha: 0.25)),
                   ),
@@ -910,7 +924,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                           color: selected
                               ? mood.color.withValues(alpha: 0.12)
                               : SageColors.card,
-                          borderRadius: BorderRadius.circular(20),
+                          borderRadius: SageRadius.round(20),
                           border: Border.all(
                             color: selected ? mood.color : SageColors.line,
                             width: selected ? 1.5 : 1.0,
@@ -980,7 +994,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                     disabledBackgroundColor: SageColors.line,
                     foregroundColor: SageColors.linen,
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14)),
+                        borderRadius: SageRadius.round(14)),
                     elevation: 0,
                   ),
                   child: Text(
@@ -1056,6 +1070,12 @@ class _BreathworkScreenState extends State<BreathworkScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              const BandOfflineNotice(
+                featureName: 'Breathwork',
+                compact: true,
+                whatWorks: 'Every technique works without it.',
+              ),
+              const SizedBox(height: 12),
               // Streak row
               if (_weekStreak > 0 || _dailySessions > 0) ...[
                 _buildStreakRow(),
@@ -1089,7 +1109,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                 _buildQuickStartCard(list.first, mood),
                 const SizedBox(height: 20),
 
-                Text('ALL TECHNIQUES',
+                Text('All techniques',
                     style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
@@ -1118,7 +1138,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: SageColors.card,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: SageRadius.round(14),
               border: Border.all(color: SageColors.line),
             ),
             child: Row(children: [
@@ -1145,7 +1165,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             decoration: BoxDecoration(
               color: SageColors.card,
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: SageRadius.round(14),
               border: Border.all(color: SageColors.line),
             ),
             child: Row(children: [
@@ -1171,7 +1191,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
     return Container(
       decoration: BoxDecoration(
         color: t.color.withValues(alpha: 0.10),
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: SageRadius.round(22),
         border: Border.all(color: t.color.withValues(alpha: 0.35), width: 1.5),
       ),
       padding: const EdgeInsets.all(18),
@@ -1184,7 +1204,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
               height: 42,
               decoration: BoxDecoration(
                 color: t.color.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: SageRadius.round(12),
               ),
               child: Icon(t.icon, color: t.color, size: 20),
             ),
@@ -1207,16 +1227,16 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                           horizontal: 7, vertical: 3),
                       decoration: BoxDecoration(
                         color: t.color,
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: SageRadius.round(6),
                       ),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(Icons.auto_awesome_rounded,
-                            size: 9, color: Colors.white),
+                            size: 9, color: SageColors.onFill(t.color)),
                         const SizedBox(width: 3),
                         Text('Best match',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 9.5,
-                                color: Colors.white,
+                                color: SageColors.onFill(t.color),
                                 fontWeight: FontWeight.w700)),
                       ]),
                     ),
@@ -1242,7 +1262,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(
                     color: SageColors.card,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: SageRadius.round(20),
                     border: Border.all(color: t.color.withValues(alpha: 0.25)),
                   ),
                   child: Text(
@@ -1295,14 +1315,15 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                     const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
                 decoration: BoxDecoration(
                   color: t.color,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: SageRadius.round(20),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
+                  Icon(Icons.play_arrow_rounded,
+                      color: SageColors.onFill(t.color), size: 16),
                   const SizedBox(width: 6),
                   Text('Begin now',
-                      style: const TextStyle(
-                          color: Colors.white,
+                      style: TextStyle(
+                          color: SageColors.onFill(t.color),
                           fontSize: 13.5,
                           fontWeight: FontWeight.w700)),
                 ]),
@@ -1322,7 +1343,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: SageColors.card,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: SageRadius.round(16),
           border: Border.all(color: SageColors.line),
         ),
         child: Row(children: [
@@ -1331,7 +1352,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
             height: 44,
             decoration: BoxDecoration(
               color: t.color.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: SageRadius.round(12),
             ),
             child: Icon(t.icon, color: t.color, size: 20),
           ),
@@ -1358,7 +1379,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                           horizontal: 6, vertical: 3),
                       decoration: BoxDecoration(
                         color: SageColors.amber.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: SageRadius.round(6),
                         border: Border.all(
                             color: SageColors.amber.withValues(alpha: 0.3)),
                       ),
@@ -1432,7 +1453,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 10, 20, 0),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: SageRadius.round(2),
                   child: LinearProgressIndicator(
                     value: _sessionProgress,
                     backgroundColor: SageColors.line,
@@ -1452,7 +1473,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                       AnimatedSwitcher(
                         duration: SageMotion.valueChange,
                         child: Text(
-                          phaseName.toUpperCase(),
+                          phaseName,
                           key: ValueKey(phaseName),
                           style: TextStyle(
                             fontSize: 12,
@@ -1465,7 +1486,8 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                       const SizedBox(height: 20),
 
                       // Orb
-                      AnimatedBuilder(
+                      RepaintBoundary(
+                          child: AnimatedBuilder(
                         animation:
                             Listenable.merge([_orbController, _glowController]),
                         builder: (context, _) {
@@ -1514,7 +1536,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                             ),
                           );
                         },
-                      ),
+                      )),
 
                       const SizedBox(height: 24),
 
@@ -1551,7 +1573,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                               color: active
                                   ? t.color
                                   : t.color.withValues(alpha: 0.25),
-                              borderRadius: BorderRadius.circular(3),
+                              borderRadius: SageRadius.round(3),
                             ),
                           );
                         }).toList(),
@@ -1587,7 +1609,8 @@ class _BreathworkScreenState extends State<BreathworkScreen>
   Widget _buildCompleteScreen() {
     final t = _selectedTechnique!;
     final score = _calmScore();
-    final label = _calmLabel(score);
+    final hasHr = _hasHeartData;
+    final label = hasHr ? _calmLabel(score) : 'Session complete';
     final change = _initialHeartRate - _currentHeartRate;
     final mins = _totalElapsed ~/ 60;
     final secs = _totalElapsed % 60;
@@ -1618,7 +1641,8 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                 const SizedBox(height: 28),
 
                 // Animated score ring
-                AnimatedBuilder(
+                RepaintBoundary(
+                    child: AnimatedBuilder(
                   animation: _completeRingCtrl,
                   builder: (context, _) => SizedBox(
                     width: 190,
@@ -1629,7 +1653,10 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                         CustomPaint(
                           size: const Size(190, 190),
                           painter: _SessionRingPainter(
-                            progress: _completeRing.value,
+                            progress: hasHr
+                                ? _completeRing.value
+                                : _completeRing.value /
+                                    (score == 0 ? 1 : score),
                             color: t.color,
                             trackColor: SageColors.line,
                             strokeWidth: 8,
@@ -1637,13 +1664,15 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                         ),
                         Column(mainAxisSize: MainAxisSize.min, children: [
                           Text(
-                            '${(_completeRing.value * 100).round()}',
+                            hasHr
+                                ? '${(_completeRing.value * 100).round()}'
+                                : '${mins > 0 ? mins : 1}',
                             style: SageText.mono(
                                 size: 44,
                                 weight: FontWeight.w700,
                                 color: t.color),
                           ),
-                          Text('calm score',
+                          Text(hasHr ? 'calm score' : 'min of calm',
                               style: TextStyle(
                                   fontSize: 12, color: SageColors.inkSoft)),
                           const SizedBox(height: 2),
@@ -1656,7 +1685,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                       ],
                     ),
                   ),
-                ),
+                )),
 
                 const SizedBox(height: 24),
 
@@ -1673,9 +1702,17 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                   const SizedBox(width: 10),
                   _statCard(
                     Icons.favorite_border_rounded,
-                    change >= 0 ? '−$change' : '+${change.abs()}',
-                    'BPM change',
-                    change >= 0 ? SageColors.moss : SageColors.clay,
+                    !hasHr
+                        ? '—'
+                        : change >= 0
+                            ? '−$change'
+                            : '+${change.abs()}',
+                    hasHr ? 'BPM change' : 'Heart rate',
+                    !hasHr
+                        ? SageColors.inkSoft
+                        : change >= 0
+                            ? SageColors.moss
+                            : SageColors.clay,
                   ),
                 ]),
 
@@ -1687,7 +1724,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
                     color: t.color.withValues(alpha: 0.07),
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: SageRadius.round(16),
                     border: Border.all(color: t.color.withValues(alpha: 0.2)),
                   ),
                   child: Row(
@@ -1723,7 +1760,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                         foregroundColor: SageColors.inkSoft,
                         side: BorderSide(color: SageColors.line),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                            borderRadius: SageRadius.round(12)),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       child: const Text('Breathe again'),
@@ -1739,10 +1776,10 @@ class _BreathworkScreenState extends State<BreathworkScreen>
                                 builder: (_) => const DailyCheckinScreen())),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: t.color,
-                          foregroundColor: Colors.white,
+                          foregroundColor: SageColors.onFill(t.color),
                           elevation: 0,
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12)),
+                              borderRadius: SageRadius.round(12)),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
                         child: const Text('Log check-in',
@@ -1773,7 +1810,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: SageRadius.round(20),
         border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -1790,7 +1827,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: SageRadius.round(8),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           Icon(icon, size: 11, color: color),
@@ -1807,7 +1844,7 @@ class _BreathworkScreenState extends State<BreathworkScreen>
           padding: const EdgeInsets.symmetric(vertical: 14),
           decoration: BoxDecoration(
             color: SageColors.card,
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: SageRadius.round(14),
             border: Border.all(color: SageColors.line),
           ),
           child: Column(children: [

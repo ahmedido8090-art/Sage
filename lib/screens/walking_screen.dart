@@ -18,11 +18,12 @@
 //   • All existing logic preserved: pace coach, activity detection, BMI-based
 //     goal, low-energy/poor-sleep context banners, BT data, DataStorage logging.
 
+import '../widgets/band_offline_notice.dart';
+import '../band/band_monitor.dart';
+import '../theme/tokens.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:material_ui/material_ui.dart';
-import '../services/bluetooth_service.dart';
-import '../services/data_storage_service.dart';
 import '../services/user_service.dart';
 import '../services/bella_service.dart';
 import '../theme/app_theme.dart';
@@ -49,8 +50,6 @@ class WalkingScreen extends StatefulWidget {
 class _WalkingScreenState extends State<WalkingScreen>
     with TickerProviderStateMixin {
   // ── Services ───────────────────────────────────────────────────────────────
-  final BluetoothService _bt = BluetoothService.instance;
-  final DataStorageService _dataStorage = DataStorageService();
   final UserService _userService = UserService();
   final BellaService _bella = BellaService();
 
@@ -59,7 +58,6 @@ class _WalkingScreenState extends State<WalkingScreen>
   int _seconds = 0;
   int _heartRate = 0;
   int _steps = 0;
-  int _initialSteps = 0;
   bool _isActive = false;
   String _activityType = 'Walking';
   double _calories = 0;
@@ -109,7 +107,6 @@ class _WalkingScreenState extends State<WalkingScreen>
   void initState() {
     super.initState();
     _heartRate = widget.initialHeartRate;
-    _initialSteps = widget.initialSteps;
     _steps = 0;
     _conditions = UserService().currentUserObject?.chronicDiseases ?? [];
 
@@ -199,20 +196,40 @@ class _WalkingScreenState extends State<WalkingScreen>
     _ambientFade =
         CurvedAnimation(parent: _ambientController, curve: Curves.easeInOut);
 
-    _bt.dataStream.listen((data) {
-      if (!mounted) return;
-      final newSteps = data.steps - _initialSteps;
-      setState(() {
-        _heartRate = data.heartRate;
-        _steps = newSteps > 0 ? newSteps : 0;
-        _recentHeartRates.add(data.heartRate);
+    BandMonitor.instance.snapshot.addListener(_onBand);
+  }
+
+  /// The band's raw step counter at the last update, to measure growth.
+  int? _lastDeviceSteps;
+
+  /// True once the band has contributed steps to this session.
+  bool _sawBandSteps = false;
+
+  void _onBand() {
+    if (!mounted) return;
+    final band = BandMonitor.instance.current;
+    final counter = band.deviceSteps;
+    setState(() {
+      _heartRate = band.liveHeartRate ?? 0;
+      if (_heartRate > 0) {
+        _recentHeartRates.add(_heartRate);
         if (_recentHeartRates.length > 10) _recentHeartRates.removeAt(0);
-        _detectActivityType();
-        _calculateMetrics();
-      });
-      _animateRing();
-      if (_isActive) _checkMilestone();
+      }
+      if (_isActive && counter != null) {
+        final previous = _lastDeviceSteps;
+        if (previous != null) {
+          // Growth in the counter; a drop means the band was reset, so what
+          // it shows now is all new.
+          _steps += counter >= previous ? counter - previous : counter;
+          if (counter != previous) _sawBandSteps = true;
+        }
+      }
+      _lastDeviceSteps = counter;
+      _detectActivityType();
+      _calculateMetrics();
     });
+    _animateRing();
+    if (_isActive) _checkMilestone();
   }
 
   void _loadLastSession() {
@@ -256,6 +273,7 @@ class _WalkingScreenState extends State<WalkingScreen>
 
   @override
   void dispose() {
+    BandMonitor.instance.snapshot.removeListener(_onBand);
     _timer?.cancel();
     _bannerTimer?.cancel();
     _ringController.dispose();
@@ -382,7 +400,8 @@ class _WalkingScreenState extends State<WalkingScreen>
       _isActive = true;
       _seconds = 0;
       _steps = 0;
-      _initialSteps = widget.initialSteps;
+      _lastDeviceSteps = BandMonitor.instance.current.deviceSteps;
+      _sawBandSteps = false;
       _calories = 0;
       _distance = 0;
       _shownMilestones.clear();
@@ -399,28 +418,9 @@ class _WalkingScreenState extends State<WalkingScreen>
     setState(() => _isActive = false);
     _ambientController.reverse();
 
-    _dataStorage.saveWalkingSession(
-      steps: _steps,
-      distanceKm: _distance,
-      calories: _calories,
-      durationSeconds: _seconds,
-      activityType: _activityType,
-      timestamp: DateTime.now(),
-      averageHeartRate: _heartRate,
-    );
-    _dataStorage.updateDailyGoal(
-        goalType: 'steps',
-        progress: _steps.toDouble(),
-        target: _targetSteps.toDouble(),
-        date: DateTime.now());
-    _dataStorage.updateDailyGoal(
-        goalType: 'activity',
-        progress: _seconds / 60.0,
-        target: 30.0,
-        date: DateTime.now());
-
     if (_seconds >= 60) {
-      _bella.logSession('walking', _seconds ~/ 60, detail: '$_steps');
+      _bella.logSession('walking', _seconds ~/ 60,
+          detail: _sawBandSteps ? '$_steps' : null);
     }
 
     // Refresh week data so chart is up to date if user starts another session
@@ -580,7 +580,7 @@ class _WalkingScreenState extends State<WalkingScreen>
                     margin: const EdgeInsets.only(bottom: 20),
                     decoration: BoxDecoration(
                       color: SageColors.line,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: SageRadius.round(2),
                     ),
                   ),
                 ),
@@ -618,18 +618,14 @@ class _WalkingScreenState extends State<WalkingScreen>
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: SageColors.linen,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(4),
-                      topRight: Radius.circular(16),
-                      bottomLeft: Radius.circular(16),
-                      bottomRight: Radius.circular(16),
-                    ),
+                    borderRadius: SageRadius.notched(16),
                     border: Border.all(color: SageColors.line),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
-                      _summaryCol('$_steps', 'Steps', SageColors.moss),
+                      _summaryCol(_sawBandSteps ? '$_steps' : '—', 'Steps',
+                          SageColors.moss),
                       _vDivider(),
                       _summaryCol(_calories.toStringAsFixed(0), 'kcal',
                           SageColors.amber),
@@ -649,12 +645,7 @@ class _WalkingScreenState extends State<WalkingScreen>
                   padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
                     color: SageColors.card,
-                    borderRadius: const BorderRadius.only(
-                      topLeft: Radius.circular(4),
-                      topRight: Radius.circular(16),
-                      bottomLeft: Radius.circular(16),
-                      bottomRight: Radius.circular(16),
-                    ),
+                    borderRadius: SageRadius.notched(16),
                     border: Border.all(color: SageColors.line),
                   ),
                   child: Column(
@@ -677,7 +668,7 @@ class _WalkingScreenState extends State<WalkingScreen>
                       ),
                       const SizedBox(height: 8),
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
+                        borderRadius: SageRadius.round(6),
                         child: LinearProgressIndicator(
                           value: goalPct / 100,
                           minHeight: 8,
@@ -687,7 +678,10 @@ class _WalkingScreenState extends State<WalkingScreen>
                         ),
                       ),
                       const SizedBox(height: 6),
-                      Text('$_steps / $_targetSteps steps',
+                      Text(
+                          _sawBandSteps
+                              ? '$_steps / $_targetSteps steps'
+                              : 'Steps need your band',
                           style: TextStyle(
                               fontSize: 11.5, color: SageColors.inkSoft)),
                     ],
@@ -704,12 +698,7 @@ class _WalkingScreenState extends State<WalkingScreen>
                         style: OutlinedButton.styleFrom(
                           side: BorderSide(color: SageColors.line),
                           shape: RoundedRectangleBorder(
-                            borderRadius: const BorderRadius.only(
-                              topLeft: Radius.circular(4),
-                              topRight: Radius.circular(12),
-                              bottomLeft: Radius.circular(12),
-                              bottomRight: Radius.circular(12),
-                            ),
+                            borderRadius: SageRadius.notched(12),
                           ),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
@@ -732,13 +721,8 @@ class _WalkingScreenState extends State<WalkingScreen>
                           backgroundColor: SageColors.moss,
                           foregroundColor: SageColors.linen,
                           elevation: 0,
-                          shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.only(
-                              topLeft: Radius.circular(4),
-                              topRight: Radius.circular(12),
-                              bottomLeft: Radius.circular(12),
-                              bottomRight: Radius.circular(12),
-                            ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: SageRadius.notched(12),
                           ),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                         ),
@@ -787,12 +771,13 @@ class _WalkingScreenState extends State<WalkingScreen>
       body: Column(
         children: [
           // ── Ambient hero header (idle ring → active step counter) ─────────
-          AnimatedBuilder(
+          RepaintBoundary(
+              child: AnimatedBuilder(
             animation: _ambientFade,
             builder: (context, _) {
               return _buildHeroPanel(fade: _ambientFade.value);
             },
-          ),
+          )),
 
           // ── HR ceiling warning ────────────────────────────────────────────
           AnimatedSwitcher(
@@ -881,13 +866,8 @@ class _WalkingScreenState extends State<WalkingScreen>
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _isActive ? SageColors.clay : _getBMIColor(),
                   foregroundColor: SageColors.linen,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(4),
-                      topRight: Radius.circular(14),
-                      bottomLeft: Radius.circular(14),
-                      bottomRight: Radius.circular(14),
-                    ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: SageRadius.notched(14),
                   ),
                   elevation: 0,
                 ),
@@ -973,7 +953,7 @@ class _WalkingScreenState extends State<WalkingScreen>
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
                       color: chipBg,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: SageRadius.round(20),
                       border: Border.all(color: chipBorder),
                     ),
                     child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -989,7 +969,7 @@ class _WalkingScreenState extends State<WalkingScreen>
                       ),
                       const SizedBox(width: 4),
                       Text(_activityType,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 12,
                               color: Colors.white,
                               fontWeight: FontWeight.w600)),
@@ -1006,7 +986,8 @@ class _WalkingScreenState extends State<WalkingScreen>
             SizedBox(
               width: 200,
               height: 200,
-              child: AnimatedBuilder(
+              child: RepaintBoundary(
+                  child: AnimatedBuilder(
                 animation: _ringController,
                 builder: (context, _) => CustomPaint(
                   painter: _StepRingPainter(
@@ -1019,7 +1000,7 @@ class _WalkingScreenState extends State<WalkingScreen>
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          '$_steps',
+                          _sawBandSteps ? '$_steps' : '—',
                           style: SageText.mono(
                               size: 42,
                               weight: FontWeight.w700,
@@ -1034,7 +1015,7 @@ class _WalkingScreenState extends State<WalkingScreen>
                               horizontal: 12, vertical: 4),
                           decoration: BoxDecoration(
                             color: SageColors.card,
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: SageRadius.round(20),
                             border: Border.all(color: SageColors.line),
                           ),
                           child: Text(
@@ -1049,14 +1030,14 @@ class _WalkingScreenState extends State<WalkingScreen>
                     ),
                   ),
                 ),
-              ),
+              )),
             )
           else
             // --- ACTIVE BIG COUNTER ---
             Column(
               children: [
                 Text(
-                  '$_steps',
+                  _sawBandSteps ? '$_steps' : '—',
                   style: SageText.mono(
                       size: 56,
                       weight: FontWeight.w700,
@@ -1071,7 +1052,7 @@ class _WalkingScreenState extends State<WalkingScreen>
                       const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
                   decoration: BoxDecoration(
                     color: chipBg,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: SageRadius.round(20),
                     border: Border.all(color: chipBorder),
                   ),
                   child: Text(
@@ -1096,6 +1077,13 @@ class _WalkingScreenState extends State<WalkingScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        const BandOfflineNotice(
+          featureName: 'Walking',
+          compact: true,
+          whatWorks: 'You can still time your walk; steps and heart rate '
+              'need the band.',
+        ),
+        const SizedBox(height: 12),
         // Context banners — priority capped at 2 maximum.
         // Chronic reading is always shown first if present (most urgent,
         // most specific). Then the single most relevant supporting signal:
@@ -1159,7 +1147,7 @@ class _WalkingScreenState extends State<WalkingScreen>
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
                     color: _getBMIColor().withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: SageRadius.round(20),
                   ),
                   child: Text(_bmiCategory,
                       style: TextStyle(
@@ -1190,12 +1178,7 @@ class _WalkingScreenState extends State<WalkingScreen>
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: _getHealthTipColor().withValues(alpha: 0.06),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(4),
-              topRight: Radius.circular(20),
-              bottomLeft: Radius.circular(20),
-              bottomRight: Radius.circular(20),
-            ),
+            borderRadius: SageRadius.notched(20),
             border:
                 Border.all(color: _getHealthTipColor().withValues(alpha: 0.2)),
           ),
@@ -1261,12 +1244,7 @@ class _WalkingScreenState extends State<WalkingScreen>
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
               color: _getPaceCoachColor().withValues(alpha: 0.07),
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(4),
-                topRight: Radius.circular(20),
-                bottomLeft: Radius.circular(20),
-                bottomRight: Radius.circular(20),
-              ),
+              borderRadius: SageRadius.notched(20),
               border: Border.all(
                   color: _getPaceCoachColor().withValues(alpha: 0.2)),
             ),
@@ -1326,7 +1304,7 @@ class _WalkingScreenState extends State<WalkingScreen>
               ),
               const SizedBox(height: 10),
               ClipRRect(
-                borderRadius: BorderRadius.circular(6),
+                borderRadius: SageRadius.round(6),
                 child: LinearProgressIndicator(
                   value: (_steps / _targetSteps).clamp(0.0, 1.0),
                   backgroundColor: SageColors.line,
@@ -1338,7 +1316,10 @@ class _WalkingScreenState extends State<WalkingScreen>
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text('$_steps / $_targetSteps steps',
+                  Text(
+                      _sawBandSteps
+                          ? '$_steps / $_targetSteps steps'
+                          : 'Steps need your band',
                       style:
                           TextStyle(fontSize: 12, color: SageColors.inkSoft)),
                   Text(
@@ -1407,7 +1388,7 @@ class _WalkingScreenState extends State<WalkingScreen>
                         height: barH,
                         decoration: BoxDecoration(
                           color: barColor,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: SageRadius.round(4),
                         ),
                       ),
                       const SizedBox(height: 5),
@@ -1576,7 +1557,7 @@ class _WalkingScreenState extends State<WalkingScreen>
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: SageRadius.round(12),
         border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(children: [
@@ -1639,7 +1620,7 @@ class _WalkingScreenState extends State<WalkingScreen>
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(
-        text.toUpperCase(),
+        text,
         style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
@@ -1653,12 +1634,7 @@ class _WalkingScreenState extends State<WalkingScreen>
   BoxDecoration _cardDecoration() {
     return BoxDecoration(
       color: SageColors.card,
-      borderRadius: const BorderRadius.only(
-        topLeft: Radius.circular(4),
-        topRight: Radius.circular(20),
-        bottomLeft: Radius.circular(20),
-        bottomRight: Radius.circular(20),
-      ),
+      borderRadius: SageRadius.notched(20),
       border: Border.all(color: SageColors.line),
     );
   }

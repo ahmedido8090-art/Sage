@@ -5,6 +5,7 @@
 // AnimatedContainer/AnimatedOpacity timings — previously these were four
 // different inline numbers (300/400/700/350ms) with no relationship to
 // each other or to the rest of the app.
+import '../theme/tokens.dart';
 import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
@@ -14,7 +15,9 @@ import 'reveal.dart';
 
 class SageHeroCard extends StatelessWidget {
   final bool isConnected;
-  final int batteryLevel;
+
+  /// Null when the band does not report its battery; nothing is shown then.
+  final int? batteryLevel;
   final int heartRate;
   final String subLabel;
   final VoidCallback onConnectPressed;
@@ -22,7 +25,7 @@ class SageHeroCard extends StatelessWidget {
   const SageHeroCard({
     super.key,
     required this.isConnected,
-    required this.batteryLevel,
+    this.batteryLevel,
     required this.heartRate,
     required this.onConnectPressed,
     this.subLabel = 'Resting',
@@ -37,7 +40,7 @@ class SageHeroCard extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
         decoration: BoxDecoration(
           color: SageColors.heroBg,
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: SageRadius.round(24),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -53,7 +56,7 @@ class SageHeroCard extends StatelessWidget {
                         const EdgeInsets.symmetric(horizontal: 11, vertical: 5),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(30),
+                      borderRadius: SageRadius.round(30),
                       border: Border.all(
                           color: Colors.white.withValues(alpha: 0.22)),
                     ),
@@ -89,18 +92,19 @@ class SageHeroCard extends StatelessWidget {
                     ),
                   ),
                 ),
-                AnimatedOpacity(
-                  duration: SageMotion.valueChange,
-                  opacity: isConnected ? 1.0 : 0.0,
-                  child: Text(
-                    '$batteryLevel%',
-                    style: SageText.mono(
-                      size: 11.5,
-                      weight: FontWeight.w400,
-                      color: SageColors.heroLabelMuted,
+                if (batteryLevel != null)
+                  AnimatedOpacity(
+                    duration: SageMotion.valueChange,
+                    opacity: isConnected ? 1.0 : 0.0,
+                    child: Text(
+                      '$batteryLevel%',
+                      style: SageText.mono(
+                        size: 11.5,
+                        weight: FontWeight.w400,
+                        color: SageColors.heroLabelMuted,
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
             const SizedBox(height: 18),

@@ -33,7 +33,7 @@ class QuoteSection extends StatelessWidget {
                 textAlign: TextAlign.center, style: SageText.quote()),
             const SizedBox(height: 10),
             Text(
-              author.toUpperCase(),
+              author,
               style: TextStyle(
                 fontSize: 11.5,
                 letterSpacing: 0.6,

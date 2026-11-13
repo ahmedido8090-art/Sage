@@ -70,6 +70,11 @@ class _RevealState extends State<Reveal> with SingleTickerProviderStateMixin {
     SchedulerBinding.instance.addPostFrameCallback((_) {
       if (_started || !mounted) return;
       _started = true;
+      // Reduced motion: appear in place, no fade or rise.
+      if (MediaQuery.disableAnimationsOf(context)) {
+        _ctrl.value = 1.0;
+        return;
+      }
       if (widget.delay == Duration.zero) {
         _ctrl.forward();
       } else {

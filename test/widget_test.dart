@@ -4,7 +4,6 @@ import 'package:sage/models/user.dart';
 void main() {
   User user({List<String> diseases = const []}) => User(
         username: 'sage',
-        password: 'pw',
         age: 30,
         gender: 'F',
         height: 170,

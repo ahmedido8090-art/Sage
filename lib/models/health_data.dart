@@ -7,9 +7,11 @@ class HealthData {
   final bool isConnected;
   final double calories;
   final int sleepHours;
-  final int spo2;
-  final double temperature;
-  final int batteryLevel;
+
+  /// Only set when the band actually reports them. Never invented.
+  final int? spo2;
+  final double? temperature;
+  final int? batteryLevel;
 
   HealthData({
     required this.heartRate,
@@ -17,9 +19,9 @@ class HealthData {
     required this.isConnected,
     required this.calories,
     required this.sleepHours,
-    this.spo2 = 98,
-    this.temperature = 36.7,
-    this.batteryLevel = 78,
+    this.spo2,
+    this.temperature,
+    this.batteryLevel,
   });
 }
 

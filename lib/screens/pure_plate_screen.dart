@@ -1,4 +1,9 @@
 // screens/pure_plate_screen.dart
+import '../widgets/sage_feedback.dart';
+import '../band/band_monitor.dart';
+import '../theme/tokens.dart';
+import '../widgets/sage_card.dart';
+import '../utils/health_metrics.dart';
 import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../services/bella_service.dart';
@@ -60,12 +65,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
     return 22.5;
   }
 
-  String _bmiCategory(double bmi) {
-    if (bmi < 18.5) return 'Underweight';
-    if (bmi < 25) return 'Normal';
-    if (bmi < 30) return 'Overweight';
-    return 'Obese';
-  }
+  String _bmiCategory(double bmi) => bmiCategory(bmi);
 
   List<String> get _conditions =>
       UserService().currentUserObject?.chronicDiseases ?? [];
@@ -311,9 +311,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
     _caloriesController.clear();
     setState(() {});
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: const Text('Logged'), backgroundColor: SageColors.moss),
-    );
+    SageFeedback.success(context, 'Logged');
   }
 
   Future<void> _removeFood(FoodEntry entry) async {
@@ -332,8 +330,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setDlg) => AlertDialog(
           backgroundColor: SageColors.card,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: SageRadius.round(20)),
           title: Text('Edit entry',
               style: TextStyle(
                   fontWeight: FontWeight.w700,
@@ -349,7 +346,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                   filled: true,
                   fillColor: SageColors.linen,
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: SageRadius.round(12),
                       borderSide: BorderSide.none),
                 ),
               ),
@@ -363,7 +360,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                   filled: true,
                   fillColor: SageColors.linen,
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: SageRadius.round(12),
                       borderSide: BorderSide.none),
                 ),
               ),
@@ -1363,8 +1360,9 @@ class _PurePlateScreenState extends State<PurePlateScreen>
       onGo: (ctx) => Navigator.push(
           ctx,
           MaterialPageRoute(
-              builder: (_) =>
-                  WalkingScreen(initialHeartRate: 72, initialSteps: 0))),
+              builder: (_) => WalkingScreen(
+                  initialHeartRate: BandMonitor.instance.heartRateOrZero,
+                  initialSteps: 0))),
     ));
 
     int meditationMin = 10;
@@ -1395,7 +1393,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
           ctx,
           MaterialPageRoute(
               builder: (_) => MeditationScreen(
-                  initialHeartRate: 72,
+                  initialHeartRate: BandMonitor.instance.heartRateOrZero,
                   bmi: bmi,
                   bmiCategory: _bmiCategory(bmi)))),
     ));
@@ -1425,7 +1423,8 @@ class _PurePlateScreenState extends State<PurePlateScreen>
       onGo: (ctx) => Navigator.push(
           ctx,
           MaterialPageRoute(
-              builder: (_) => const BreathworkScreen(initialHeartRate: 72))),
+              builder: (_) => BreathworkScreen(
+                  initialHeartRate: BandMonitor.instance.heartRateOrZero))),
     ));
 
     return suggestions;
@@ -1455,7 +1454,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SageColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: SageRadius.round(20)),
         title: Text('Build your own Fitly plan',
             style: TextStyle(
                 fontWeight: FontWeight.w700,
@@ -1474,7 +1473,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                   filled: true,
                   fillColor: SageColors.linen,
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: SageRadius.round(12),
                       borderSide: BorderSide.none),
                 ),
               ),
@@ -1534,11 +1533,11 @@ class _PurePlateScreenState extends State<PurePlateScreen>
               if (!mounted) return;
               Navigator.pop(ctx);
               setState(() {});
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text(name.isNotEmpty
+              SageFeedback.success(
+                  context,
+                  name.isNotEmpty
                       ? '"$name" saved'
-                      : 'Custom Fitly plan saved'),
-                  backgroundColor: SageColors.moss));
+                      : 'Custom Fitly plan saved');
             },
             style: ElevatedButton.styleFrom(
                 backgroundColor: SageColors.moss,
@@ -1556,7 +1555,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SageColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: SageRadius.round(20)),
         title: Text('Delete custom plan?',
             style: TextStyle(
                 color: SageColors.ink,
@@ -1595,9 +1594,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
     await _bella.saveTargets(targets);
     if (!mounted) return;
     setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: const Text('Custom plan deleted'),
-        backgroundColor: SageColors.clay));
+    SageFeedback.problem(context, 'Custom plan deleted');
   }
 
   Widget _numField(TextEditingController ctrl, String label, String suffix) {
@@ -1610,8 +1607,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
         filled: true,
         fillColor: SageColors.linen,
         border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide.none),
+            borderRadius: SageRadius.round(12), borderSide: BorderSide.none),
       ),
     );
   }
@@ -1734,7 +1730,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                           horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
                         color: SageColors.moss.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: SageRadius.round(8),
                       ),
                       child: Text(
                         'Custom target',
@@ -1797,7 +1793,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: comment.color.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: SageRadius.round(12),
                       border: Border.all(
                           color: comment.color.withValues(alpha: 0.22)),
                     ),
@@ -1835,7 +1831,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                         side: BorderSide(
                             color: SageColors.clay.withValues(alpha: 0.4)),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                            borderRadius: SageRadius.round(10)),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 8),
                       ),
@@ -1861,7 +1857,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                           side: BorderSide(
                               color: SageColors.inkSoft.withValues(alpha: 0.3)),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                              borderRadius: SageRadius.round(10)),
                           padding: const EdgeInsets.symmetric(
                               horizontal: 12, vertical: 8),
                         ),
@@ -1967,7 +1963,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                   Row(children: [
                     Expanded(
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: SageRadius.round(4),
                         child: LinearProgressIndicator(
                           value: (totalCal / calorieTarget).clamp(0.0, 1.0),
                           minHeight: 5,
@@ -2008,7 +2004,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                                 : SageColors.moss;
                       }())
                           .withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: SageRadius.round(12),
                       border: Border.all(
                         color: (() {
                           final r = totalCal / calorieTarget;
@@ -2063,7 +2059,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                     filled: true,
                     fillColor: SageColors.linen,
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: SageRadius.round(12),
                         borderSide: BorderSide.none),
                   ),
                 ),
@@ -2077,7 +2073,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                     filled: true,
                     fillColor: SageColors.linen,
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: SageRadius.round(12),
                         borderSide: BorderSide.none),
                   ),
                 ),
@@ -2097,7 +2093,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                       backgroundColor: SageColors.moss,
                       foregroundColor: SageColors.linen,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                          borderRadius: SageRadius.round(12)),
                     ),
                     child: const Text('Add entry'),
                   ),
@@ -2344,7 +2340,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                 InkWell(
                   onTap: () => setState(
                       () => _sageSuggestionExpanded = !_sageSuggestionExpanded),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: SageRadius.round(8),
                   child: Row(children: [
                     Container(
                       padding: const EdgeInsets.all(7),
@@ -2432,16 +2428,14 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                           });
                           setState(() {});
                           if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                              content: const Text('Sage targets applied'),
-                              backgroundColor: SageColors.moss));
+                          SageFeedback.success(context, 'Sage targets applied');
                         },
                         style: OutlinedButton.styleFrom(
                           foregroundColor: SageColors.moss,
                           side: BorderSide(
                               color: SageColors.moss.withValues(alpha: 0.4)),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                              borderRadius: SageRadius.round(10)),
                           padding: const EdgeInsets.symmetric(vertical: 11),
                         ),
                         child: const Text('Apply suggestion',
@@ -2461,7 +2455,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                               color:
                                   SageColors.inkSoft.withValues(alpha: 0.35)),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10)),
+                              borderRadius: SageRadius.round(10)),
                           padding: const EdgeInsets.symmetric(vertical: 11),
                         ),
                         child: const Text('Customise',
@@ -2518,7 +2512,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                         side: BorderSide(
                             color: SageColors.moss.withValues(alpha: 0.4)),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                            borderRadius: SageRadius.round(10)),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
                         minimumSize: Size.zero,
@@ -2535,7 +2529,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                         side: BorderSide(
                             color: SageColors.clay.withValues(alpha: 0.4)),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10)),
+                            borderRadius: SageRadius.round(10)),
                         padding: const EdgeInsets.symmetric(
                             horizontal: 10, vertical: 6),
                         minimumSize: Size.zero,
@@ -2657,7 +2651,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                                           fb.severity == _FeedbackSeverity.good
                                               ? 0.06
                                               : 0.09),
-                                  borderRadius: BorderRadius.circular(12),
+                                  borderRadius: SageRadius.round(12),
                                   border: Border.all(
                                       color: fb.color.withValues(alpha: 0.22)),
                                 ),
@@ -2747,7 +2741,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                       side: BorderSide(
                           color: SageColors.moss.withValues(alpha: 0.4)),
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                          borderRadius: SageRadius.round(12)),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
@@ -2806,7 +2800,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                               side: BorderSide(
                                   color: w.color.withValues(alpha: 0.4)),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                  borderRadius: SageRadius.round(10)),
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 8),
                             ),
@@ -2827,11 +2821,8 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                                     }
                                     setState(() {});
                                     if (!mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(
-                                            content: Text(
-                                                '${w.title} target set to ${w.targetLabel}'),
-                                            backgroundColor: SageColors.moss));
+                                    SageFeedback.success(context,
+                                        '${w.title} target set to ${w.targetLabel}');
                                   },
                             style: OutlinedButton.styleFrom(
                               foregroundColor:
@@ -2841,7 +2832,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
                                       ? SageColors.line
                                       : SageColors.moss.withValues(alpha: 0.4)),
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10)),
+                                  borderRadius: SageRadius.round(10)),
                               padding: const EdgeInsets.symmetric(
                                   horizontal: 12, vertical: 8),
                             ),
@@ -2871,7 +2862,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: SageRadius.round(12),
           border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Column(
@@ -2900,7 +2891,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: SageRadius.round(12),
         border: Border.all(color: color.withValues(alpha: 0.18)),
       ),
       child: Column(
@@ -2932,7 +2923,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: SageRadius.round(12),
           border: Border.all(color: color.withValues(alpha: 0.2)),
         ),
         child: Row(children: [
@@ -2960,7 +2951,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: t.color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: SageRadius.round(12),
         border: Border.all(color: t.color.withValues(alpha: 0.22)),
       ),
       child: Row(children: [
@@ -2992,7 +2983,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(10)),
+          borderRadius: SageRadius.round(10)),
       child: Row(children: [
         Icon(icon, size: 15, color: color),
         const SizedBox(width: 8),
@@ -3018,23 +3009,7 @@ class _PurePlateScreenState extends State<PurePlateScreen>
     );
   }
 
-  Widget _card({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: SageColors.card,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(4),
-          topRight: Radius.circular(20),
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
-        border: Border.all(color: SageColors.line),
-      ),
-      child: child,
-    );
-  }
+  Widget _card({required Widget child}) => SageCard(child: child);
 }
 
 // ── Data models ────────────────────────────────────────────────────────────

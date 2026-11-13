@@ -30,6 +30,7 @@ class SleepSoundsPlayerService extends ChangeNotifier
   final BellaService _bella = BellaService();
 
   bool _initialized = false;
+  bool _listenersAttached = false;
   bool _observerAttached = false;
 
   // ── Mixer state — max 2 simultaneous sounds ──────────────────────────────
@@ -70,14 +71,18 @@ class SleepSoundsPlayerService extends ChangeNotifier
   // Setup
   // ─────────────────────────────────────────────────────────────────────────
 
-  /// Safe to call every time SleepSoundsScreen mounts — only does real work
-  /// once per app run.
+  /// Safe to call every time SleepSoundsScreen mounts. Per-user settings are
+  /// loaded once per signed-in user; the player listeners are attached once
+  /// per app run.
   void init() {
     if (_initialized) return;
     _initialized = true;
 
     playInBackground =
         _bella.getTarget<bool>('sleepSoundsPlayInBackground') ?? false;
+
+    if (_listenersAttached) return;
+    _listenersAttached = true;
 
     for (int i = 0; i < players.length; i++) {
       players[i].setAudioContext(_audioContext());
@@ -158,8 +163,6 @@ class SleepSoundsPlayerService extends ChangeNotifier
   bool get anyPlaying => slotPlaying.any((p) => p);
   bool get anyActive => slotSound.any((s) => s != null);
 
-  List<DateTime?>? get slotStart => null;
-
   // ── Time-tracking helpers ─────────────────────────────────────────────────
 
   /// Add the seconds elapsed since the slot last resumed into its bank.
@@ -171,19 +174,22 @@ class SleepSoundsPlayerService extends ChangeNotifier
     _slotResumeTime[slot] = null;
   }
 
-  /// Total play seconds for a slot: banked + currently-playing delta.
-  int _totalPlaySecs(int slot) {
-    final banked = _slotAccumulatedSecs[slot];
-    final resume = _slotResumeTime[slot];
-    if (resume == null) return banked;
-    return banked + DateTime.now().difference(resume).inSeconds;
-  }
-
   /// Reset all time-tracking state for a slot (call after logging or evicting).
   void _resetSlotTracking(int slot) {
     _slotAccumulatedSecs[slot] = 0;
     _slotResumeTime[slot] = null;
     _slotLogged[slot] = false;
+  }
+
+  /// Stops playback, logs what was played to the current user, and forgets
+  /// per-user settings. Call this before signing out, while the session still
+  /// belongs to the right user.
+  Future<void> resetForUserChange() async {
+    stopTimer();
+    await stopAllAndClose();
+    _initialized = false;
+    playInBackground = false;
+    selectedTimerMinutes = 30;
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -280,18 +286,25 @@ class SleepSoundsPlayerService extends ChangeNotifier
   ///    nothing was logged at all — that was the main source of
   ///    inconsistency.)
   ///  • Bank any still-running seconds first so the total is accurate.
-  void saveSessionIfNeeded(int slot) {
-    if (_slotLogged[slot]) return; // already committed — don't double-log
-    if (slotSound[slot] == null) return;
+  void saveSessionIfNeeded(int slot) => _commitSlots([slot]);
 
-    // Bank any seconds still accumulating (slot may still be playing).
-    _bankSeconds(slot);
-
-    final totalSecs = _slotAccumulatedSecs[slot];
-    if (totalSecs < 60) return; // under a minute — not worth logging
-
-    _bella.logSession('sleep_sounds', totalSecs ~/ 60);
-    _slotLogged[slot] = true; // mark so subsequent calls don't re-log
+  /// Logs one session covering [slots]. Two sounds playing together are one
+  /// night's listening, so the session length is the longest slot, not the
+  /// sum. This is the only place sleep-sounds sessions are logged.
+  void _commitSlots(List<int> slots) {
+    var longest = 0;
+    var any = false;
+    for (final slot in slots) {
+      if (_slotLogged[slot] || slotSound[slot] == null) continue;
+      _bankSeconds(slot);
+      _slotLogged[slot] = true;
+      any = true;
+      if (_slotAccumulatedSecs[slot] > longest) {
+        longest = _slotAccumulatedSecs[slot];
+      }
+    }
+    if (!any || longest < 60) return; // under a minute: not worth logging
+    _bella.logSession('sleep_sounds', longest ~/ 60);
   }
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -331,8 +344,8 @@ class SleepSoundsPlayerService extends ChangeNotifier
   }
 
   Future<void> stopAllAndClose() async {
+    _commitSlots(List.generate(players.length, (i) => i));
     for (int i = 0; i < players.length; i++) {
-      saveSessionIfNeeded(i);
       await players[i].stop();
       slotSound[i] = null;
       slotPlaying[i] = false;

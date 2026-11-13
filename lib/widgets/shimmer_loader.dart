@@ -5,6 +5,7 @@
 // Use SageShimmer as a drop-in placeholder wherever a card would normally
 // appear while data is loading. ShimmerCard and ShimmerRow are convenience
 // wrappers for the two most common shapes in Sage Health.
+import '../theme/tokens.dart';
 import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 
@@ -48,11 +49,13 @@ class _SageShimmerState extends State<SageShimmer>
 
   @override
   Widget build(BuildContext context) {
-    final base = SageColors.isDark ? SageColors.card : const Color(0xFFEEECE6);
+    final base =
+        SageColors.isDark ? SageColors.cardRaised : const Color(0xFFEEECE6);
     final highlight =
         SageColors.isDark ? SageColors.line : const Color(0xFFF7F5EF);
 
-    return AnimatedBuilder(
+    return RepaintBoundary(
+        child: AnimatedBuilder(
       animation: _anim,
       builder: (_, __) => ShaderMask(
         blendMode: BlendMode.srcATop,
@@ -65,7 +68,7 @@ class _SageShimmerState extends State<SageShimmer>
         ).createShader(bounds),
         child: widget.child,
       ),
-    );
+    ));
   }
 }
 
@@ -94,13 +97,14 @@ class ShimmerBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = SageColors.isDark ? SageColors.card : const Color(0xFFEEECE6);
+    final color =
+        SageColors.isDark ? SageColors.cardRaised : const Color(0xFFEEECE6);
     return Container(
       width: width,
       height: height,
       decoration: BoxDecoration(
         color: color,
-        borderRadius: borderRadius ?? BorderRadius.circular(8),
+        borderRadius: borderRadius ?? SageRadius.round(8),
       ),
     );
   }
@@ -117,23 +121,25 @@ class ShimmerHeroCard extends StatelessWidget {
         width: double.infinity,
         height: 170,
         decoration: BoxDecoration(
-          color: SageColors.isDark ? SageColors.card : const Color(0xFFEEECE6),
-          borderRadius: BorderRadius.circular(24),
+          color: SageColors.isDark
+              ? SageColors.cardRaised
+              : const Color(0xFFEEECE6),
+          borderRadius: SageRadius.round(24),
         ),
         padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ShimmerBlock(
-                width: 150, height: 16, borderRadius: BorderRadius.circular(8)),
+                width: 150, height: 16, borderRadius: SageRadius.round(8)),
             const SizedBox(height: 16),
             ShimmerBlock(
-                width: 90, height: 48, borderRadius: BorderRadius.circular(8)),
+                width: 90, height: 48, borderRadius: SageRadius.round(8)),
             const SizedBox(height: 8),
             ShimmerBlock(
                 width: double.infinity,
                 height: 20,
-                borderRadius: BorderRadius.circular(6)),
+                borderRadius: SageRadius.round(6)),
           ],
         ),
       ),
@@ -151,7 +157,9 @@ class ShimmerMetricTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
         decoration: BoxDecoration(
-          color: SageColors.isDark ? SageColors.card : const Color(0xFFEEECE6),
+          color: SageColors.isDark
+              ? SageColors.cardRaised
+              : const Color(0xFFEEECE6),
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(18),
             topRight: Radius.circular(18),
@@ -163,13 +171,13 @@ class ShimmerMetricTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ShimmerBlock(
-                width: 18, height: 18, borderRadius: BorderRadius.circular(4)),
+                width: 18, height: 18, borderRadius: SageRadius.round(4)),
             const SizedBox(height: 10),
             ShimmerBlock(
-                width: 64, height: 22, borderRadius: BorderRadius.circular(6)),
+                width: 64, height: 22, borderRadius: SageRadius.round(6)),
             const SizedBox(height: 6),
             ShimmerBlock(
-                width: 48, height: 12, borderRadius: BorderRadius.circular(4)),
+                width: 48, height: 12, borderRadius: SageRadius.round(4)),
           ],
         ),
       ),
@@ -188,25 +196,22 @@ class ShimmerActivityTile extends StatelessWidget {
         width: 124,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
-          color: SageColors.isDark ? SageColors.card : const Color(0xFFEEECE6),
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(4),
-            topRight: Radius.circular(14),
-            bottomLeft: Radius.circular(14),
-            bottomRight: Radius.circular(14),
-          ),
+          color: SageColors.isDark
+              ? SageColors.cardRaised
+              : const Color(0xFFEEECE6),
+          borderRadius: SageRadius.notched(14),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             ShimmerBlock(
-                width: 20, height: 20, borderRadius: BorderRadius.circular(4)),
+                width: 20, height: 20, borderRadius: SageRadius.round(4)),
             const SizedBox(height: 14),
             ShimmerBlock(
-                width: 80, height: 13, borderRadius: BorderRadius.circular(5)),
+                width: 80, height: 13, borderRadius: SageRadius.round(5)),
             const SizedBox(height: 5),
             ShimmerBlock(
-                width: 55, height: 10, borderRadius: BorderRadius.circular(4)),
+                width: 55, height: 10, borderRadius: SageRadius.round(4)),
           ],
         ),
       ),

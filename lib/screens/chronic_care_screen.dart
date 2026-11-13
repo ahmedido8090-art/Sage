@@ -1,4 +1,10 @@
 // screens/chronic_care_screen.dart
+import '../widgets/sage_feedback.dart';
+import '../band/band_monitor.dart';
+import '../widgets/sage_illustration.dart';
+import '../widgets/sage_states.dart';
+import '../theme/tokens.dart';
+import '../widgets/sage_card.dart';
 import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../services/bella_service.dart';
@@ -128,11 +134,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
     if (_selectedCondition == null) return;
     final val = double.tryParse(_valueController.text.trim());
     if (val == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: const Text('Please enter a valid number'),
-            backgroundColor: SageColors.clay),
-      );
+      SageFeedback.problem(context, 'Please enter a valid number');
       return;
     }
     final meta = _readingTypeForCondition[_selectedCondition]!;
@@ -156,11 +158,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
     _noteController.clear();
     setState(() {});
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-          content: const Text('Reading saved'),
-          backgroundColor: SageColors.moss),
-    );
+    SageFeedback.success(context, 'Reading saved');
   }
 
   // ── Edit reading dialog ───────────────────────────────────────────────────
@@ -178,7 +176,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SageColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: SageRadius.round(16)),
         title: Text('Edit ${meta['type']}',
             style: SageText.headline(color: SageColors.ink)),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -194,7 +192,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
                   filled: true,
                   fillColor: SageColors.linen,
                   border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
+                      borderRadius: SageRadius.round(10),
                       borderSide: BorderSide.none),
                 ),
               ),
@@ -211,7 +209,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
                     filled: true,
                     fillColor: SageColors.linen,
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
+                        borderRadius: SageRadius.round(10),
                         borderSide: BorderSide.none),
                   ),
                 ),
@@ -228,7 +226,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
               filled: true,
               fillColor: SageColors.linen,
               border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: SageRadius.round(10),
                   borderSide: BorderSide.none),
             ),
           ),
@@ -242,8 +240,8 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
             style: ElevatedButton.styleFrom(
                 backgroundColor: SageColors.sage,
                 foregroundColor: SageColors.linen,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10))),
+                shape:
+                    RoundedRectangleBorder(borderRadius: SageRadius.round(10))),
             onPressed: () async {
               final newVal = double.tryParse(valCtrl.text.trim());
               if (newVal == null) return;
@@ -257,9 +255,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
               if (!mounted) return;
               Navigator.pop(ctx);
               setState(() {});
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: const Text('Reading updated'),
-                  backgroundColor: SageColors.moss));
+              SageFeedback.success(context, 'Reading updated');
             },
             child: const Text('Save'),
           ),
@@ -278,7 +274,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: SageColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        shape: RoundedRectangleBorder(borderRadius: SageRadius.round(16)),
         title: Text('Delete reading?',
             style: SageText.headline(color: SageColors.ink)),
         content: Text(
@@ -296,8 +292,8 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
             style: ElevatedButton.styleFrom(
                 backgroundColor: SageColors.clay,
                 foregroundColor: SageColors.linen,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10))),
+                shape:
+                    RoundedRectangleBorder(borderRadius: SageRadius.round(10))),
             onPressed: () => Navigator.pop(ctx, true),
             child: const Text('Delete'),
           ),
@@ -308,9 +304,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
       await _bella.deleteReading(entry);
       if (mounted) {
         setState(() {});
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: const Text('Reading deleted'),
-            backgroundColor: SageColors.clay));
+        SageFeedback.problem(context, 'Reading deleted');
       }
     }
   }
@@ -449,8 +443,8 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
           onAction: () => Navigator.push(
               context,
               MaterialPageRoute(
-                  builder: (_) =>
-                      const BreathworkScreen(initialHeartRate: 72))),
+                  builder: (_) => BreathworkScreen(
+                      initialHeartRate: BandMonitor.instance.heartRateOrZero))),
         ));
       }
 
@@ -587,8 +581,8 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (_) => const WalkingScreen(
-                initialHeartRate: 72,
+              builder: (_) => WalkingScreen(
+                initialHeartRate: BandMonitor.instance.heartRateOrZero,
                 initialSteps: 0,
               ),
             ),
@@ -710,7 +704,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
           // ── Context insight banners ──────────────────────────────────────
           if (contextInsights.isNotEmpty) ...[
             Text(
-              'FACTORS AFFECTING YOUR ${cond.toUpperCase()}',
+              'What affects your ${cond.toLowerCase()}',
               style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -760,7 +754,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
                         filled: true,
                         fillColor: SageColors.linen,
                         border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: SageRadius.round(12),
                             borderSide: BorderSide.none),
                       ),
                     ),
@@ -777,7 +771,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
                           filled: true,
                           fillColor: SageColors.linen,
                           border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: SageRadius.round(12),
                               borderSide: BorderSide.none),
                         ),
                       ),
@@ -795,7 +789,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
                     filled: true,
                     fillColor: SageColors.linen,
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: SageRadius.round(12),
                         borderSide: BorderSide.none),
                   ),
                 ),
@@ -811,7 +805,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
                       backgroundColor: SageColors.sage,
                       foregroundColor: SageColors.linen,
                       shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12)),
+                          borderRadius: SageRadius.round(12)),
                     ),
                   ),
                 ),
@@ -860,7 +854,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
                                           ? SageColors.clay
                                           : SageColors.sage)
                                       .withValues(alpha: 0.75),
-                                  borderRadius: BorderRadius.circular(3),
+                                  borderRadius: SageRadius.round(3),
                                 ),
                               ),
                             ),
@@ -902,7 +896,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text('READING HISTORY',
+                Text('Reading history',
                     style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
@@ -974,7 +968,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
               color: SageColors.amber.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: SageRadius.round(10),
               border:
                   Border.all(color: SageColors.amber.withValues(alpha: 0.25)),
             ),
@@ -1014,7 +1008,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
             decoration: BoxDecoration(
               color: (_result!.urgent ? SageColors.clay : SageColors.moss)
                   .withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: SageRadius.round(12),
               border: Border.all(
                   color: (_result!.urgent ? SageColors.clay : SageColors.moss)
                       .withValues(alpha: 0.25)),
@@ -1065,8 +1059,9 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
               onPressed: () => Navigator.push(
                   context,
                   MaterialPageRoute(
-                      builder: (_) =>
-                          const BreathworkScreen(initialHeartRate: 72))),
+                      builder: (_) => BreathworkScreen(
+                          initialHeartRate:
+                              BandMonitor.instance.heartRateOrZero))),
               icon: Icon(Icons.air, color: SageColors.clay, size: 16),
               label: Text('Try calming breathwork',
                   style: TextStyle(color: SageColors.clay, fontSize: 13)),
@@ -1111,7 +1106,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: ins.color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: SageRadius.round(12),
         border: Border.all(color: ins.color.withValues(alpha: 0.22)),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1147,23 +1142,7 @@ class _ChronicCareScreenState extends State<ChronicCareScreen>
     );
   }
 
-  Widget _card({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: SageColors.card,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(4),
-          topRight: Radius.circular(20),
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
-        border: Border.all(color: SageColors.line),
-      ),
-      child: child,
-    );
-  }
+  Widget _card({required Widget child}) => SageCard(child: child);
 }
 
 // ── Reading row with edit / delete ────────────────────────────────────────────
@@ -1291,36 +1270,14 @@ class _NoConditionsBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 36),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 84,
-              height: 84,
-              decoration: BoxDecoration(
-                  color: SageColors.moss.withValues(alpha: 0.12),
-                  shape: BoxShape.circle),
-              child:
-                  Icon(Icons.favorite_border, size: 36, color: SageColors.moss),
-            ),
-            const SizedBox(height: 20),
-            Text('No conditions on file',
-                style: SageText.headline(), textAlign: TextAlign.center),
-            const SizedBox(height: 10),
-            Text(
-              'Chronic Care tailors itself to conditions you add in your '
-              'Profile. Add one there to unlock readings, a symptom guide, '
-              'and personalised cross-feature insights.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  color: SageColors.inkSoft, fontSize: 14, height: 1.5),
-            ),
-          ],
-        ),
-      ),
+    return EmptyState(
+      art: SageArt.heart,
+      title: 'No conditions on file',
+      message: 'Chronic Care tailors itself to conditions you add in your '
+          'Profile. Add one there to unlock readings, a symptom guide and '
+          'insights that fit you.',
+      actionLabel: 'Take me back',
+      onAction: () => Navigator.maybePop(context),
     );
   }
 }

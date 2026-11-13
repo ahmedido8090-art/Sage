@@ -7,12 +7,16 @@ plugins {
 
 android {
     namespace = "com.example.sage"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_local_notifications and androidx.core 1.19 need API 37 at compile
+    // time. targetSdk still follows Flutter, so runtime behavior is unchanged.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // Required by flutter_local_notifications for scheduled notifications.
+        isCoreLibraryDesugaringEnabled = true
     }
 
     defaultConfig {
@@ -39,6 +43,10 @@ kotlin {
     compilerOptions {
         jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
     }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 flutter {

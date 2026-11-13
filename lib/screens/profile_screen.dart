@@ -3,10 +3,22 @@
 // Entrance is now Reveal (large) instead of a hand-rolled
 // AnimationController, and the metric/condition/password cards are
 // staggered via StaggerColumn — same primitives as every other screen.
+import '../widgets/sage_button.dart';
+import '../widgets/sage_feedback.dart';
+import '../theme/tokens.dart';
+import 'dart:convert';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:material_ui/material_ui.dart';
+import '../services/data_storage_service.dart';
+import '../utils/friendly_error.dart';
 import '../services/user_service.dart';
 import '../services/bella_service.dart';
 import '../services/care_rules.dart';
+import '../band/band_monitor.dart';
+import '../notifications/notification_service.dart';
+import '../services/sleep_sounds_player_service.dart';
+import '../widgets/sage_settings_row.dart';
+import 'notification_settings_screen.dart';
 import '../models/user.dart';
 import '../theme/app_theme.dart';
 import '../utils/page_transitions.dart';
@@ -107,10 +119,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       await Future.delayed(const Duration(milliseconds: 500));
 
-      // Create updated user object
-      final updatedUser = User(
-        username: _usernameController.text.trim(),
-        password: _currentUser!.password, // Keep current password
+      final updatedUser = _currentUser!.copyWith(
         age: int.tryParse(_ageController.text) ?? _currentUser!.age,
         gender: _selectedGender,
         height: double.tryParse(_heightController.text) ?? _currentUser!.height,
@@ -121,23 +130,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Update user details
       UserService().updateUserDetails(_currentUser!.username, updatedUser);
 
-      // Re-derive the water target from the updated weight/BMI and conditions
-      // so PurePlate's hydration goal stays in sync without requiring the user
-      // to manually re-visit that screen.
-      final h = updatedUser.height / 100;
-      final bmi = h > 0 ? updatedUser.weight / (h * h) : 22.5;
-      final plan = CareRules.generatePlan(
-        bmi: bmi,
-        conditions: updatedUser.chronicDiseases,
-      );
-      final bella = BellaService();
-      final currentTargets = bella.getTargets();
-      // Only overwrite waterMl — leave calorieTarget and activity targets alone
-      // so the user's PurePlate customisations aren't silently reset.
-      await bella.saveTargets({
-        ...currentTargets,
-        'waterMl': plan.dailyWaterMlTarget,
-      });
+      // Re-derive the water target only when something it depends on changed,
+      // so a custom PurePlate target survives edits to unrelated fields
+      // (age, gender).
+      final previous = _currentUser!;
+      final waterInputsChanged = previous.height != updatedUser.height ||
+          previous.weight != updatedUser.weight ||
+          previous.chronicDiseases.join('|') !=
+              updatedUser.chronicDiseases.join('|');
+      if (waterInputsChanged) {
+        final plan = CareRules.generatePlan(
+          bmi: updatedUser.bmi > 0 ? updatedUser.bmi : 22.5,
+          conditions: updatedUser.chronicDiseases,
+        );
+        final bella = BellaService();
+        // Only waterMl: calorie and activity targets stay as the user set them.
+        await bella.saveTargets({
+          ...bella.getTargets(),
+          'waterMl': plan.dailyWaterMlTarget,
+        });
+      }
 
       setState(() {
         _isLoading = false;
@@ -147,13 +159,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _successMessage = 'Profile updated successfully!';
       });
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Profile updated successfully!'),
-          backgroundColor: SageColors.moss,
-          duration: const Duration(seconds: 2),
-        ),
-      );
+      SageFeedback.success(context, 'Profile updated successfully!');
     }
   }
 
@@ -174,7 +180,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
 
-    if (_currentPasswordController.text != _currentUser!.password) {
+    if (!UserService().verifyPassword(
+        _currentUser!.username, _currentPasswordController.text)) {
       setState(() {
         _errorMessage = 'Current password is incorrect';
       });
@@ -196,17 +203,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _successMessage = 'Password changed successfully!';
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Password changed successfully!'),
-        backgroundColor: SageColors.moss,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+    SageFeedback.success(context, 'Password changed successfully!');
   }
 
-  void _logout() {
+  Future<void> _copyData() async {
+    try {
+      final text = const JsonEncoder.withIndent('  ')
+          .convert(BellaService().exportAll());
+      await Clipboard.setData(ClipboardData(text: text));
+      if (!mounted) return;
+      SageFeedback.success(
+          context, 'Copied. Paste it anywhere to keep a backup.');
+    } catch (e, st) {
+      if (!mounted) return;
+      SageFeedback.problem(context, humanizeError(e, stackTrace: st).message);
+    }
+  }
+
+  Future<void> _confirmReset() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Start fresh?'),
+        content: const Text(
+          'This clears your logs, streaks and achievements from this phone. '
+          'Your account, goals and settings stay put. It can\'t be undone, '
+          'so copy your data first if you\'d like a backup.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep my data'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: SageColors.clay,
+              foregroundColor: SageColors.onFill(SageColors.clay),
+            ),
+            child: const Text('Clear my data'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await BellaService().clearLoggedData();
+      await DataStorageService().clearBandData();
+      await NotificationService.instance.refresh();
+      if (!mounted) return;
+      SageFeedback.success(context, 'Fresh start. Your data has been cleared.');
+    } catch (e, st) {
+      if (!mounted) return;
+      SageFeedback.problem(context, humanizeError(e, stackTrace: st).message);
+    }
+  }
+
+  Future<void> _logout() async {
+    // Stop sleep sounds first so what was played is logged to this user.
+    await SleepSoundsPlayerService().resetForUserChange();
+    await NotificationService.instance.cancelAll();
     UserService().logout();
+    BandMonitor.instance.onUserChanged();
+    if (!mounted) return;
     Navigator.pushAndRemoveUntil(
       context,
       fadeRoute(const LoginScreen()),
@@ -225,19 +284,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
           enabled ? SageColors.linen : SageColors.line.withValues(alpha: 0.3),
       enabled: enabled,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide(color: SageColors.line),
       ),
       disabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide(color: SageColors.line),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide(color: SageColors.moss, width: 1.5),
       ),
     );
@@ -247,12 +306,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return BoxDecoration(
       color: SageColors.card,
       border: Border.all(color: SageColors.line),
-      borderRadius: const BorderRadius.only(
-        topLeft: Radius.circular(4),
-        topRight: Radius.circular(20),
-        bottomLeft: Radius.circular(20),
-        bottomRight: Radius.circular(20),
-      ),
+      borderRadius: SageRadius.notched(20),
     );
   }
 
@@ -350,7 +404,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                     horizontal: 12, vertical: 5),
                                 decoration: BoxDecoration(
                                   color: _getBMIColor().withValues(alpha: 0.12),
-                                  borderRadius: BorderRadius.circular(20),
+                                  borderRadius: SageRadius.round(20),
                                 ),
                                 child: Text(
                                   _getBMICategory(),
@@ -387,7 +441,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: SageColors.clay.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: SageRadius.round(12),
                           border: Border.all(
                               color: SageColors.clay.withValues(alpha: 0.3)),
                         ),
@@ -409,7 +463,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
                           color: SageColors.moss.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: SageRadius.round(12),
                           border: Border.all(
                               color: SageColors.moss.withValues(alpha: 0.3)),
                         ),
@@ -628,6 +682,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                     const SizedBox(height: 16),
 
+                    // Notifications
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      decoration: _cardDecoration(),
+                      child: SageSettingsRow(
+                        icon: Icons.notifications_none,
+                        title: 'Notifications',
+                        subtitle: NotificationService.instance.prefs.enabled
+                            ? 'On. Tap to choose what and when.'
+                            : 'Off. Tap to set up gentle reminders.',
+                        trailing: Icon(Icons.chevron_right,
+                            color: SageColors.inkSoft),
+                        onTap: () async {
+                          await Navigator.push(context,
+                              slideUpRoute(const NotificationSettingsScreen()));
+                          if (mounted) setState(() {});
+                        },
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
+                    // Your data
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12),
+                      decoration: _cardDecoration(),
+                      child: Column(
+                        children: [
+                          SageSettingsRow(
+                            icon: Icons.copy_all_outlined,
+                            title: 'Copy my data',
+                            subtitle:
+                                'Everything you\'ve logged, as text to keep',
+                            trailing: Icon(Icons.chevron_right,
+                                color: SageColors.inkSoft),
+                            onTap: _copyData,
+                          ),
+                          const SizedBox(height: 4),
+                          SageSettingsRow(
+                            icon: Icons.restart_alt_rounded,
+                            title: 'Reset my data',
+                            subtitle: 'Clear logs, streaks and achievements',
+                            accent: SageColors.clay,
+                            trailing: Icon(Icons.chevron_right,
+                                color: SageColors.inkSoft),
+                            onTap: _confirmReset,
+                          ),
+                        ],
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
+
                     // Password Change
                     Container(
                       padding: const EdgeInsets.all(20),
@@ -698,7 +807,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   backgroundColor: SageColors.moss,
                                   foregroundColor: SageColors.linen,
                                   shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(14)),
+                                      borderRadius: SageRadius.round(14)),
                                   padding:
                                       const EdgeInsets.symmetric(vertical: 15),
                                   elevation: 0,
@@ -729,7 +838,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 foregroundColor: SageColors.clay,
                                 side: BorderSide(color: SageColors.clay),
                                 shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14)),
+                                    borderRadius: SageRadius.round(14)),
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 15),
                               ),
@@ -738,26 +847,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           const SizedBox(width: 14),
                           Expanded(
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _updateProfile,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: SageColors.moss,
-                                foregroundColor: SageColors.linen,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(14)),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 15),
-                                elevation: 0,
-                              ),
-                              child: _isLoading
-                                  ? SizedBox(
-                                      width: 20,
-                                      height: 20,
-                                      child: CircularProgressIndicator(
-                                          color: SageColors.linen,
-                                          strokeWidth: 2),
-                                    )
-                                  : const Text('Save changes'),
+                            child: SageButton(
+                              label: 'Save changes',
+                              loading: _isLoading,
+                              onPressed: _updateProfile,
                             ),
                           ),
                         ],
@@ -774,7 +867,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           foregroundColor: SageColors.clay,
                           side: BorderSide(color: SageColors.clay),
                           shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
+                              borderRadius: SageRadius.round(14)),
                           padding: const EdgeInsets.symmetric(vertical: 15),
                         ),
                         child: const Row(
@@ -813,8 +906,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 color: SageColors.moss,
                 fontWeight: FontWeight.w600),
             side: BorderSide(color: SageColors.moss.withValues(alpha: 0.3)),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            shape: RoundedRectangleBorder(borderRadius: SageRadius.round(20)),
           );
         }).toList(),
       );
@@ -846,8 +938,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             color: selected ? SageColors.moss : SageColors.inkSoft,
             fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
           ),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: SageRadius.round(20)),
         );
       }).toList(),
     );

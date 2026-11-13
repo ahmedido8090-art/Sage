@@ -22,12 +22,14 @@
 // All existing data (poses, Bella context, BT heart-rate, DataStorage
 // logging) is preserved exactly — only presentation changes.
 
+import '../widgets/band_offline_notice.dart';
+import '../band/band_monitor.dart';
+import '../theme/tokens.dart';
+import '../utils/health_metrics.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'package:material_ui/material_ui.dart';
 import 'package:audioplayers/audioplayers.dart';
-import '../services/bluetooth_service.dart';
-import '../services/data_storage_service.dart';
 import '../services/bella_service.dart';
 import '../services/user_service.dart';
 import '../theme/app_theme.dart';
@@ -100,8 +102,6 @@ class MeditationScreen extends StatefulWidget {
 class _MeditationScreenState extends State<MeditationScreen>
     with TickerProviderStateMixin {
   // ── Services ───────────────────────────────────────────────────────────────
-  final BluetoothService _bt = BluetoothService.instance;
-  final DataStorageService _dataStorage = DataStorageService();
   final BellaService _bella = BellaService();
 
   // ── Session state ──────────────────────────────────────────────────────────
@@ -319,16 +319,7 @@ class _MeditationScreenState extends State<MeditationScreen>
     _loadBellaContext();
     _loadChronicReadingContext();
 
-    _bt.dataStream.listen((data) {
-      if (mounted) {
-        setState(() {
-          _currentHeartRate = data.heartRate;
-          if (_isActive && _seconds % 30 == 0) {
-            _heartRateHistory.add(data.heartRate);
-          }
-        });
-      }
-    });
+    BandMonitor.instance.snapshot.addListener(_onBand);
 
     _selectPoseForContext();
 
@@ -604,6 +595,7 @@ class _MeditationScreenState extends State<MeditationScreen>
 
   @override
   void dispose() {
+    BandMonitor.instance.snapshot.removeListener(_onBand);
     _sessionTimer?.cancel();
     _breathTimer?.cancel();
     _orbController.dispose();
@@ -616,12 +608,7 @@ class _MeditationScreenState extends State<MeditationScreen>
   // Helpers
   // ─────────────────────────────────────────────────────────────────────────
 
-  String get _bmiCategory {
-    if (widget.bmi < 18.5) return 'Underweight';
-    if (widget.bmi < 25) return 'Normal';
-    if (widget.bmi < 30) return 'Overweight';
-    return 'Obese';
-  }
+  String get _bmiCategory => bmiCategory(widget.bmi);
 
   bool _isPoseSuitable(int index) {
     final suitable = _meditationPoses[index]['suitableForBMI'] as List<String>;
@@ -732,6 +719,17 @@ class _MeditationScreenState extends State<MeditationScreen>
     _orbController.forward(from: 0);
   }
 
+  /// Only the live heart rate counts: 0 means the band was not delivering.
+  void _onBand() {
+    if (!mounted) return;
+    final hr = BandMonitor.instance.current.liveHeartRate ?? 0;
+    if (hr == _currentHeartRate) return;
+    setState(() {
+      _currentHeartRate = hr;
+      if (hr > 0 && _isActive && _seconds % 30 == 0) _heartRateHistory.add(hr);
+    });
+  }
+
   void _stopMeditation() {
     _sessionTimer?.cancel();
     _breathTimer?.cancel();
@@ -741,12 +739,6 @@ class _MeditationScreenState extends State<MeditationScreen>
       final pose = _meditationPoses[_selectedPoseIndex];
       _bella.logSession('meditation', _seconds ~/ 60,
           detail: pose['shortName'] as String?);
-      _dataStorage.updateDailyGoal(
-        goalType: 'meditation',
-        progress: _seconds / 60.0,
-        target: _selectedDurationMinutes.toDouble(),
-        date: DateTime.now(),
-      );
     }
   }
 
@@ -766,22 +758,6 @@ class _MeditationScreenState extends State<MeditationScreen>
     final finalHR = _currentHeartRate;
     final change = initialHR - finalHR;
 
-    _dataStorage.saveMeditationSession(
-      poseName: pose['name'] as String,
-      durationSeconds: _seconds,
-      startHeartRate: initialHR,
-      endHeartRate: finalHR,
-      timestamp: DateTime.now(),
-      benefits: (pose['benefits'] as List<String>).join(', '),
-      calmScore: _calculateCalmScore(initialHR, finalHR),
-    );
-    _dataStorage.updateDailyGoal(
-      goalType: 'meditation',
-      progress: _seconds / 60.0,
-      target: _selectedDurationMinutes.toDouble(),
-      date: DateTime.now(),
-    );
-
     _showCompletionDialog(initialHR, finalHR, change);
   }
 
@@ -800,7 +776,7 @@ class _MeditationScreenState extends State<MeditationScreen>
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         backgroundColor: SageColors.card,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: SageRadius.round(20)),
         title: Column(children: [
           Container(
             width: 52,
@@ -823,55 +799,63 @@ class _MeditationScreenState extends State<MeditationScreen>
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: SageColors.linen,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: SageColors.line),
+            if (initialHR > 0 && finalHR > 0) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: SageColors.linen,
+                  borderRadius: SageRadius.round(12),
+                  border: Border.all(color: SageColors.line),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _hrCol('$initialHR', 'Before', SageColors.inkSoft),
+                    Icon(Icons.arrow_forward,
+                        color: SageColors.inkSoft, size: 16),
+                    _hrCol('$finalHR', 'After', SageColors.moss),
+                    Icon(Icons.arrow_forward,
+                        color: SageColors.inkSoft, size: 16),
+                    _hrCol(
+                      '${change.abs()} bpm',
+                      change > 0
+                          ? 'Down ↓'
+                          : change < 0
+                              ? 'Up ↑'
+                              : 'Stable',
+                      change > 0
+                          ? SageColors.moss
+                          : change < 0
+                              ? SageColors.clay
+                              : SageColors.amber,
+                    ),
+                  ],
+                ),
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _hrCol('$initialHR', 'Before', SageColors.inkSoft),
-                  Icon(Icons.arrow_forward,
-                      color: SageColors.inkSoft, size: 16),
-                  _hrCol('$finalHR', 'After', SageColors.moss),
-                  Icon(Icons.arrow_forward,
-                      color: SageColors.inkSoft, size: 16),
-                  _hrCol(
-                    '${change.abs()} bpm',
-                    change > 0
-                        ? 'Down ↓'
-                        : change < 0
-                            ? 'Up ↑'
-                            : 'Stable',
-                    change > 0
-                        ? SageColors.moss
-                        : change < 0
-                            ? SageColors.clay
-                            : SageColors.amber,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              change > 5
-                  ? 'Excellent — heart rate dropped significantly.'
-                  : change > 0
-                      ? 'Good work — heart rate decreased.'
-                      : 'Try a different pose or longer session next time.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: change > 5
-                    ? SageColors.moss
+              const SizedBox(height: 10),
+              Text(
+                change > 5
+                    ? 'Excellent — heart rate dropped significantly.'
                     : change > 0
-                        ? SageColors.sage
-                        : SageColors.amber,
-                fontSize: 13,
+                        ? 'Good work — heart rate decreased.'
+                        : 'Try a different pose or longer session next time.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: change > 5
+                      ? SageColors.moss
+                      : change > 0
+                          ? SageColors.sage
+                          : SageColors.amber,
+                  fontSize: 13,
+                ),
               ),
-            ),
+            ] else
+              Text(
+                'Heart rate wasn\'t tracked this time because your band '
+                'wasn\'t connected. Your session still counts.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: SageColors.inkSoft, fontSize: 13),
+              ),
             if (weekSessions > 0) ...[
               const SizedBox(height: 10),
               Container(
@@ -879,7 +863,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
                   color: SageColors.moss.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: SageRadius.round(8),
                 ),
                 child: Text(
                   '$weekSessions session${weekSessions == 1 ? '' : 's'} this week 🌿',
@@ -957,7 +941,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: SageColors.moss.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: SageRadius.round(20),
                     border: Border.all(
                         color: SageColors.moss.withValues(alpha: 0.2)),
                   ),
@@ -979,7 +963,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                     decoration: BoxDecoration(
                       color: _getHRColor(_currentHeartRate)
                           .withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: SageRadius.round(20),
                       border: Border.all(
                           color: _getHRColor(_currentHeartRate)
                               .withValues(alpha: 0.3)),
@@ -1028,6 +1012,14 @@ class _MeditationScreenState extends State<MeditationScreen>
 
     return Column(
       children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(20, 8, 20, 10),
+          child: BandOfflineNotice(
+            featureName: 'Meditation',
+            compact: true,
+            whatWorks: 'Every pose and timer works without it.',
+          ),
+        ),
         // ── Pose picker strip ──────────────────────────────────────────
         Container(
           color: SageColors.card,
@@ -1035,7 +1027,7 @@ class _MeditationScreenState extends State<MeditationScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('CHOOSE POSE',
+              Text('Choose a pose',
                   style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -1080,7 +1072,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                     decoration: BoxDecoration(
                       color: (_chronicReadingColor ?? SageColors.moss)
                           .withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: SageRadius.round(12),
                       border: Border.all(
                           color: (_chronicReadingColor ?? SageColors.moss)
                               .withValues(alpha: 0.22)),
@@ -1111,7 +1103,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: SageColors.amber.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: SageRadius.round(12),
                       border: Border.all(
                           color: SageColors.amber.withValues(alpha: 0.22)),
                     ),
@@ -1161,8 +1153,8 @@ class _MeditationScreenState extends State<MeditationScreen>
               style: ElevatedButton.styleFrom(
                 backgroundColor: accent,
                 foregroundColor: SageColors.linen,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14)),
+                shape:
+                    RoundedRectangleBorder(borderRadius: SageRadius.round(14)),
                 elevation: 0,
               ),
               child: Row(
@@ -1171,7 +1163,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                   const Icon(Icons.play_arrow_rounded),
                   const SizedBox(width: 8),
                   Text(
-                    'BEGIN ${(pose['shortName'] as String).toUpperCase()} · $_selectedDurationMinutes MIN',
+                    'Begin ${(pose['shortName'] as String)} · $_selectedDurationMinutes MIN',
                     style: const TextStyle(
                         fontSize: 14, fontWeight: FontWeight.w700),
                   ),
@@ -1203,7 +1195,7 @@ class _MeditationScreenState extends State<MeditationScreen>
         decoration: BoxDecoration(
           color:
               isSelected ? pAccent.withValues(alpha: 0.12) : SageColors.linen,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: SageRadius.round(16),
           border: Border.all(
             color: isSelected ? pAccent : SageColors.line,
             width: isSelected ? 1.5 : 1.0,
@@ -1229,7 +1221,7 @@ class _MeditationScreenState extends State<MeditationScreen>
               decoration: BoxDecoration(
                 color: (isSelected ? pAccent : SageColors.inkSoft)
                     .withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: SageRadius.round(4),
               ),
               child: Text(
                 (p['energyLevel'] as String).split(' ').first,
@@ -1257,7 +1249,7 @@ class _MeditationScreenState extends State<MeditationScreen>
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: SageColors.card,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: SageRadius.round(20),
         border: Border.all(color: accent.withValues(alpha: 0.3)),
       ),
       child: Column(
@@ -1270,7 +1262,7 @@ class _MeditationScreenState extends State<MeditationScreen>
               height: 48,
               decoration: BoxDecoration(
                 color: accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: SageRadius.round(14),
               ),
               child: Icon(pose['icon'] as IconData, color: accent, size: 24),
             ),
@@ -1344,7 +1336,7 @@ class _MeditationScreenState extends State<MeditationScreen>
             padding: const EdgeInsets.all(11),
             decoration: BoxDecoration(
               color: SageColors.moss.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: SageRadius.round(10),
               border: Border.all(color: SageColors.moss.withValues(alpha: 0.2)),
             ),
             child: Row(children: [
@@ -1386,13 +1378,13 @@ class _MeditationScreenState extends State<MeditationScreen>
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: SageColors.card,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: SageRadius.round(16),
               border: Border.all(color: SageColors.line),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('THIS WEEK',
+                Text('This week',
                     style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -1422,13 +1414,13 @@ class _MeditationScreenState extends State<MeditationScreen>
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: SageColors.card,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: SageRadius.round(16),
               border: Border.all(color: SageColors.line),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('LAST SESSION',
+                Text('Last session',
                     style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -1451,7 +1443,7 @@ class _MeditationScreenState extends State<MeditationScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('DURATION',
+        Text('Duration',
             style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w600,
@@ -1471,7 +1463,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   decoration: BoxDecoration(
                     color: selected ? accent : SageColors.card,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: SageRadius.round(12),
                     border:
                         Border.all(color: selected ? accent : SageColors.line),
                   ),
@@ -1500,7 +1492,7 @@ class _MeditationScreenState extends State<MeditationScreen>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.06),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: SageRadius.round(12),
         border: Border.all(color: color.withValues(alpha: 0.2)),
       ),
       child: Row(children: [
@@ -1534,7 +1526,7 @@ class _MeditationScreenState extends State<MeditationScreen>
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             child: Row(children: [
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('MEDITATING',
+                Text('Meditating',
                     style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -1551,7 +1543,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                   decoration: BoxDecoration(
                     color:
                         _getHRColor(_currentHeartRate).withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: SageRadius.round(20),
                     border: Border.all(
                         color: _getHRColor(_currentHeartRate)
                             .withValues(alpha: 0.3)),
@@ -1580,7 +1572,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                   AnimatedSwitcher(
                     duration: SageMotion.valueChange,
                     child: Text(
-                      phase.label.toUpperCase(),
+                      phase.label,
                       key: ValueKey('${_phaseIndex}_${phase.label}'),
                       style: TextStyle(
                         fontSize: 13,
@@ -1612,7 +1604,8 @@ class _MeditationScreenState extends State<MeditationScreen>
 
                       // Breathing orb — scales with animation, glow aura
                       // pulses independently for a layered living feel.
-                      AnimatedBuilder(
+                      RepaintBoundary(
+                          child: AnimatedBuilder(
                         animation:
                             Listenable.merge([_orbController, _glowController]),
                         builder: (context, _) {
@@ -1651,7 +1644,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                             child: const SizedBox.shrink(),
                           );
                         },
-                      ),
+                      )),
                     ],
                   ),
 
@@ -1670,7 +1663,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                         decoration: BoxDecoration(
                           color:
                               active ? accent : accent.withValues(alpha: 0.25),
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: SageRadius.round(4),
                         ),
                       );
                     }).toList(),
@@ -1737,7 +1730,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                   margin: const EdgeInsets.only(bottom: 16),
                   decoration: BoxDecoration(
                     color: SageColors.line,
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: SageRadius.round(2),
                   ),
                 ),
               ),
@@ -1747,7 +1740,7 @@ class _MeditationScreenState extends State<MeditationScreen>
                   height: 44,
                   decoration: BoxDecoration(
                     color: accent.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: SageRadius.round(12),
                   ),
                   child:
                       Icon(pose['icon'] as IconData, color: accent, size: 22),
@@ -1811,7 +1804,7 @@ class _MeditationScreenState extends State<MeditationScreen>
             alignment: Alignment.center,
             decoration: BoxDecoration(
               color: accent,
-              borderRadius: BorderRadius.circular(11),
+              borderRadius: SageRadius.round(11),
             ),
             child: Text('$n',
                 style: TextStyle(
@@ -1834,7 +1827,7 @@ class _MeditationScreenState extends State<MeditationScreen>
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(
           color: accent.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: SageRadius.round(20),
           border: Border.all(color: accent.withValues(alpha: 0.2)),
         ),
         child: Row(mainAxisSize: MainAxisSize.min, children: [

@@ -9,10 +9,14 @@
 // (_AnimatedArc, _AnimatedScoreRing), which animate a numeric fill rather
 // than an entrance and so don't fit the Reveal/Pressable/Stagger model.
 
+import '../widgets/sage_card.dart';
+import '../widgets/band_offline_notice.dart';
+import '../band/band_monitor.dart';
+import '../theme/tokens.dart';
+import '../utils/health_metrics.dart';
 import 'package:material_ui/material_ui.dart';
 import 'dart:math' as math;
 import '../models/bella_data.dart';
-import '../services/bluetooth_service.dart';
 import '../services/user_service.dart';
 import '../services/wellness_quote_service.dart';
 import '../services/bella_service.dart';
@@ -45,10 +49,11 @@ final RouteObserver<ModalRoute<void>> wellnessRouteObserver =
     RouteObserver<ModalRoute<void>>();
 
 class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
-  final BluetoothService _bt = BluetoothService.instance;
   final BellaService _bella = BellaService();
-  int _heartRate = 72;
-  int _steps = 0;
+
+  /// What the band reports right now; 0 means "not measured", never a guess.
+  int get _heartRate => BandMonitor.instance.current.heartRateOrZero;
+  int get _steps => BandMonitor.instance.current.deviceSteps ?? 0;
   double _bmi = 22.5;
   late Quote _currentQuote;
 
@@ -106,14 +111,6 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
           _bella.sessionsToday('breathwork') * 5 +
           _bella.sessionMinutesToday('sleep_sounds'),
     );
-
-    _bt.dataStream.listen((data) {
-      if (!mounted) return;
-      setState(() {
-        _heartRate = data.heartRate;
-        _steps = data.steps;
-      });
-    });
 
     _calculateBMI();
     _loadBellaData();
@@ -208,61 +205,20 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
   /// (meditation, breathwork, walking, sleep_sounds) had at least one session.
   /// This is the most motivating streak because it shows a holistic practice.
   int _calculateMultiActivityStreak() {
-    final medDates = _bella
-        .getSessions(type: 'meditation')
-        .map((s) => _dateKey(s.date))
-        .toSet();
-    final bwDates = _bella
-        .getSessions(type: 'breathwork')
-        .map((s) => _dateKey(s.date))
-        .toSet();
-    final walkDates = _bella
-        .getSessions(type: 'walking')
-        .map((s) => _dateKey(s.date))
-        .toSet();
-    final relaxDates = _bella
-        .getSessions(type: 'sleep_sounds')
-        .map((s) => _dateKey(s.date))
-        .toSet();
-
-    int streak = 0;
-    DateTime cursor = DateTime.now();
-    for (int i = 0; i < 365; i++) {
-      final key = _dateKey(cursor);
-      final count = (medDates.contains(key) ? 1 : 0) +
-          (bwDates.contains(key) ? 1 : 0) +
-          (walkDates.contains(key) ? 1 : 0) +
-          (relaxDates.contains(key) ? 1 : 0);
-      if (count >= 2) {
-        streak++;
-        cursor = cursor.subtract(const Duration(days: 1));
-      } else {
-        break;
-      }
+    final typesByDay = <String, Set<String>>{};
+    for (final s in _bella.getSessions()) {
+      typesByDay.putIfAbsent(dayKey(s.date), () => {}).add(s.type);
     }
-    return streak;
+    final qualifying = {
+      for (final e in typesByDay.entries)
+        if (e.value.length >= 2) e.key,
+    };
+    return streakEndingToday(qualifying);
   }
 
   // ── Streak helper ────────────────────────────────────────────────────────
-  int _calculateStreak(String type) {
-    final dates =
-        _bella.getSessions(type: type).map((s) => _dateKey(s.date)).toSet();
-    if (dates.isEmpty) return 0;
-    int streak = 0;
-    DateTime cursor = DateTime.now();
-    for (int i = 0; i < 365; i++) {
-      if (dates.contains(_dateKey(cursor))) {
-        streak++;
-        cursor = cursor.subtract(const Duration(days: 1));
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
-
-  String _dateKey(DateTime d) =>
-      '${d.year}-${d.month.toString().padLeft(2, '0')}-${d.day.toString().padLeft(2, '0')}';
+  int _calculateStreak(String type) => streakEndingToday(
+      _bella.getSessions(type: type).map((s) => dayKey(s.date)).toSet());
 
   // ── Last session label ────────────────────────────────────────────────────
   String _lastSessionLabel(String type) {
@@ -320,12 +276,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
     }
   }
 
-  String _getBMICategory() {
-    if (_bmi < 18.5) return 'Underweight';
-    if (_bmi < 25) return 'Normal';
-    if (_bmi < 30) return 'Overweight';
-    return 'Obese';
-  }
+  String _getBMICategory() => bmiCategory(_bmi);
 
   String _scoreLabel() => WellnessScoreService.label(_overallScore);
 
@@ -448,6 +399,12 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
               children: [
                 // ── Header ──────────────────────────────────────────────
                 _buildHeader(),
+                const SizedBox(height: SageSpace.md),
+                const BandOfflineNotice(
+                  featureName: 'Wellness',
+                  compact: true,
+                  whatWorks: 'Everything here works without it.',
+                ),
                 const SizedBox(height: 20),
 
                 // ── Chronic alert (only when out-of-range) ───────────────
@@ -571,52 +528,14 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
             ],
           ),
         ),
-        // Heart rate chip — cross-fades the bpm value when it changes so a
-        // live reading doesn't just snap, matching SageHeroCard's chip.
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-          decoration: BoxDecoration(
-            color: SageColors.card,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: SageColors.line),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.favorite, color: SageColors.clay, size: 13),
-              const SizedBox(width: 4),
-              AnimatedSwitcher(
-                duration: SageMotion.valueChange,
-                child: Text(
-                  '$_heartRate',
-                  key: ValueKey(_heartRate),
-                  style: SageText.mono(
-                      size: 13, weight: FontWeight.w700, color: SageColors.ink),
-                ),
-              ),
-              Text(
-                ' bpm',
-                style: TextStyle(fontSize: 11, color: SageColors.inkSoft),
-              ),
-            ],
-          ),
-        ),
+        const _LiveHeartRateChip(),
       ],
     );
   }
 
   // ── Section label ─────────────────────────────────────────────────────────
-  Widget _buildSectionLabel(String text) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 1.2,
-        color: SageColors.inkSoft,
-      ),
-    );
-  }
+  Widget _buildSectionLabel(String text) =>
+      SectionHeader(title: text, dense: true);
 
   // ── Alert banner ─────────────────────────────────────────────────────────
   Widget _buildAlert({
@@ -631,7 +550,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
       padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Row(children: [
@@ -788,7 +707,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(14),
+                borderRadius: SageRadius.round(14),
                 border: Border.all(color: color.withValues(alpha: 0.25)),
               ),
               child: Row(
@@ -958,7 +877,7 @@ class _ProgressMiniCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
           decoration: BoxDecoration(
             color: done ? color.withValues(alpha: 0.10) : SageColors.card,
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: SageRadius.round(16),
             border: Border.all(
               color: done ? color.withValues(alpha: 0.40) : SageColors.line,
               width: done ? 1.5 : 1.0,
@@ -1056,7 +975,7 @@ class _PracticeCard extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: SageColors.card,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: SageRadius.round(20),
             border: Border.all(
               color: data.done
                   ? data.accent.withValues(alpha: 0.40)
@@ -1074,7 +993,7 @@ class _PracticeCard extends StatelessWidget {
                     height: 40,
                     decoration: BoxDecoration(
                       color: data.accent.withValues(alpha: 0.12),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: SageRadius.round(12),
                     ),
                     child: Icon(data.icon, color: data.accent, size: 20),
                   ),
@@ -1094,7 +1013,7 @@ class _PracticeCard extends StatelessWidget {
                                 horizontal: 7, vertical: 3),
                             decoration: BoxDecoration(
                               color: data.accent.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(20),
+                              borderRadius: SageRadius.round(20),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1181,7 +1100,7 @@ class _HealthStatusCard extends StatelessWidget {
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: SageColors.card,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: SageRadius.round(20),
         border: Border.all(color: SageColors.line),
       ),
       child: Column(
@@ -1205,7 +1124,7 @@ class _HealthStatusCard extends StatelessWidget {
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: scoreColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: SageRadius.round(20),
                   ),
                   child: Text(
                     scoreLabel,
@@ -1326,7 +1245,7 @@ class _HealthStatusCard extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: SageColors.sage.withValues(alpha: 0.08),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: SageRadius.round(12),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1584,4 +1503,56 @@ class _ScoreRingPainter extends CustomPainter {
   @override
   bool shouldRepaint(_ScoreRingPainter old) =>
       old.score != score || old.color != color;
+}
+
+/// The live heart rate chip. Shown only while the band is delivering readings:
+/// a stale or missing number would be a guess, so nothing appears instead.
+class _LiveHeartRateChip extends StatelessWidget {
+  const _LiveHeartRateChip();
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<BandSnapshot>(
+      valueListenable: BandMonitor.instance.snapshot,
+      builder: (context, band, _) {
+        final hr = band.liveHeartRate;
+        return AnimatedSwitcher(
+          duration: SageMotion.valueChange,
+          child: hr == null
+              ? const SizedBox.shrink(key: ValueKey('none'))
+              : Semantics(
+                  label: 'Heart rate $hr beats per minute',
+                  excludeSemantics: true,
+                  child: Container(
+                    key: const ValueKey('chip'),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: SageColors.card,
+                      borderRadius: SageRadius.round(20),
+                      border: Border.all(color: SageColors.line),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.favorite, color: SageColors.clay, size: 14),
+                        const SizedBox(width: 4),
+                        AnimatedSwitcher(
+                          duration: SageMotion.valueChange,
+                          child: Text(
+                            '$hr',
+                            key: ValueKey(hr),
+                            style:
+                                SageText.mono(size: 14, color: SageColors.ink),
+                          ),
+                        ),
+                        Text(' bpm', style: SageText.caption()),
+                      ],
+                    ),
+                  ),
+                ),
+        );
+      },
+    );
+  }
 }

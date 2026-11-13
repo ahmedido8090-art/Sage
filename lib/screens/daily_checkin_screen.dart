@@ -1,9 +1,15 @@
 // screens/daily_checkin_screen.dart
+import '../band/band_monitor.dart';
+import '../widgets/sage_illustration.dart';
+import '../widgets/sage_states.dart';
+import '../theme/tokens.dart';
+import 'dart:async';
+import '../widgets/sage_card.dart';
+import '../utils/health_metrics.dart';
 import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../services/bella_service.dart';
 import '../services/user_service.dart';
-import '../services/bluetooth_service.dart';
 import '../models/bella_data.dart';
 import '../widgets/reveal.dart';
 import 'breathwork_screen.dart';
@@ -61,8 +67,6 @@ class DailyCheckinScreen extends StatefulWidget {
 class _DailyCheckinScreenState extends State<DailyCheckinScreen>
     with SingleTickerProviderStateMixin {
   final BellaService _bella = BellaService();
-  final BluetoothService _bt = BluetoothService.instance;
-  int _liveHeartRate = 72; // updated from band if connected
 
   // ── Log-tab state ──────────────────────────────────────────────────────
   int _mood = 3;
@@ -81,12 +85,6 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    // Keep live HR in sync if band is connected
-    _bt.dataStream.listen((data) {
-      if (mounted && data.heartRate > 0) {
-        setState(() => _liveHeartRate = data.heartRate);
-      }
-    });
   }
 
   @override
@@ -104,12 +102,7 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
     return 22.5;
   }
 
-  String _bmiCategory(double bmi) {
-    if (bmi < 18.5) return 'Underweight';
-    if (bmi < 25) return 'Normal';
-    if (bmi < 30) return 'Overweight';
-    return 'Obese';
-  }
+  String _bmiCategory(double bmi) => bmiCategory(bmi);
 
   Future<void> _submit() async {
     final entry = CheckinEntry(
@@ -262,7 +255,8 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
             context,
             MaterialPageRoute(
                 builder: (_) => BreathworkScreen(
-                    initialHeartRate: _liveHeartRate, autoStart: true))),
+                    initialHeartRate: BandMonitor.instance.heartRateOrZero,
+                    autoStart: true))),
       ));
     }
 
@@ -276,7 +270,7 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
             context,
             MaterialPageRoute(
                 builder: (_) => MeditationScreen(
-                    initialHeartRate: _liveHeartRate,
+                    initialHeartRate: BandMonitor.instance.heartRateOrZero,
                     bmi: bmi,
                     bmiCategory: _bmiCategory(bmi)))),
       ));
@@ -307,7 +301,8 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
               context,
               MaterialPageRoute(
                   builder: (_) => WalkingScreen(
-                      initialHeartRate: _liveHeartRate, initialSteps: 0))),
+                      initialHeartRate: BandMonitor.instance.heartRateOrZero,
+                      initialSteps: 0))),
         ));
       }
     }
@@ -346,7 +341,8 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
             context,
             MaterialPageRoute(
                 builder: (_) => WalkingScreen(
-                    initialHeartRate: _liveHeartRate, initialSteps: 0))),
+                    initialHeartRate: BandMonitor.instance.heartRateOrZero,
+                    initialSteps: 0))),
       ));
     }
     return recs.take(3).toList();
@@ -529,8 +525,9 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
         onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-                builder: (_) => const BreathworkScreen(
-                    initialHeartRate: 72, autoStart: true))),
+                builder: (_) => BreathworkScreen(
+                    initialHeartRate: BandMonitor.instance.heartRateOrZero,
+                    autoStart: true))),
       ));
     } else if (stressDelta <= -threshold) {
       insights.add(_TrendInsight(
@@ -754,7 +751,7 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
                       filled: true,
                       fillColor: SageColors.linen,
                       border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: SageRadius.round(12),
                           borderSide: BorderSide.none),
                     ),
                   ),
@@ -770,7 +767,7 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
                         backgroundColor: SageColors.amber,
                         foregroundColor: SageColors.ink,
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12)),
+                            borderRadius: SageRadius.round(12)),
                       ),
                       child: const Text('Check in',
                           style: TextStyle(fontWeight: FontWeight.w600)),
@@ -852,7 +849,7 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
                           horizontal: 14, vertical: 7),
                       decoration: BoxDecoration(
                         color: sel ? SageColors.amber : SageColors.card,
-                        borderRadius: BorderRadius.circular(20),
+                        borderRadius: SageRadius.round(20),
                         border: Border.all(
                             color: sel ? SageColors.amber : SageColors.line),
                       ),
@@ -877,7 +874,7 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
               color: _showToday
                   ? SageColors.moss.withValues(alpha: 0.12)
                   : SageColors.card,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: SageRadius.round(20),
               border: Border.all(
                   color: _showToday ? SageColors.moss : SageColors.line),
             ),
@@ -960,12 +957,12 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
   Widget _buildGraphCard(List<CheckinEntry> entries) {
     if (entries.isEmpty) {
       return _card(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 18),
-            child: Text('No check-ins for this period',
-                style: TextStyle(color: SageColors.inkSoft, fontSize: 13)),
-          ),
+        child: const EmptyState(
+          art: SageArt.mood,
+          title: 'No check-ins in this period',
+          message:
+              'Try a longer range, or check in now to start your first one.',
+          compact: true,
         ),
       );
     }
@@ -1004,7 +1001,7 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
                             height: h,
                             decoration: BoxDecoration(
                               color: col.withValues(alpha: 0.75),
-                              borderRadius: BorderRadius.circular(4),
+                              borderRadius: SageRadius.round(4),
                             ),
                           ),
                         ],
@@ -1246,7 +1243,7 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           color: r.color.withValues(alpha: 0.07),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: SageRadius.round(12),
           border: Border.all(color: r.color.withValues(alpha: 0.2)),
         ),
         child: Row(children: [
@@ -1291,7 +1288,7 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
           color: color.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(12)),
+          borderRadius: SageRadius.round(12)),
       child: Row(children: [
         Text('Wellbeing score preview',
             style: TextStyle(fontSize: 12.5, color: SageColors.inkSoft)),
@@ -1473,7 +1470,7 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: ins.color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: SageRadius.round(12),
         border: Border.all(color: ins.color.withValues(alpha: 0.22)),
       ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -1497,7 +1494,7 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: c.color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: SageRadius.round(12),
         border: Border.all(color: c.color.withValues(alpha: 0.22)),
       ),
       child: Row(children: [
@@ -1510,39 +1507,15 @@ class _DailyCheckinScreenState extends State<DailyCheckinScreen>
     );
   }
 
-  Widget _buildSectionLabel(String text) {
-    return Text(
-      text,
-      style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-          color: SageColors.inkSoft),
-    );
-  }
+  Widget _buildSectionLabel(String text) =>
+      SectionHeader(title: text, dense: true);
 
   String _dayLabel(DateTime t) {
     const days = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
     return days[t.weekday - 1];
   }
 
-  Widget _card({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: SageColors.card,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(4),
-          topRight: Radius.circular(20),
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
-        border: Border.all(color: SageColors.line),
-      ),
-      child: child,
-    );
-  }
+  Widget _card({required Widget child}) => SageCard(child: child);
 }
 
 // ── Data classes ──────────────────────────────────────────────────────────────

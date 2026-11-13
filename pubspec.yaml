@@ -21,6 +21,11 @@ dependencies:
     sdk: flutter
   audioplayers: 6.5.1
   material_ui: ^1.11.0
+  crypto: ^3.0.7
+  flutter_local_notifications: ^23.0.2
+  timezone: ^0.11.2
+  flutter_timezone: ^5.1.1
+  app_settings: ^9.0.1
   
 
 dev_dependencies:

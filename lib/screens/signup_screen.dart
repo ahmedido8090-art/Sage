@@ -1,4 +1,8 @@
 // screens/signup_screen.dart
+import '../widgets/sage_card.dart';
+import '../widgets/sage_feedback.dart';
+import '../widgets/sage_button.dart';
+import '../theme/tokens.dart';
 import 'package:material_ui/material_ui.dart';
 import '../services/user_service.dart';
 import '../services/bella_service.dart';
@@ -50,7 +54,6 @@ class _SignupScreenState extends State<SignupScreen> {
       // Create user object
       final user = User(
         username: _usernameController.text.trim(),
-        password: _passwordController.text.trim(),
         age: int.tryParse(_ageController.text) ?? 0,
         gender: _selectedGender,
         height: double.tryParse(_heightController.text) ?? 0.0,
@@ -59,7 +62,8 @@ class _SignupScreenState extends State<SignupScreen> {
       );
 
       // Register user
-      final result = UserService().register(user);
+      final result =
+          UserService().register(user, _passwordController.text.trim());
 
       // Seed sensible Bella targets immediately after registration so new
       // users don't see "0/0" progress rings or divide-by-zero guards on
@@ -67,30 +71,25 @@ class _SignupScreenState extends State<SignupScreen> {
       // CareRules; activity targets use the same defaults the rest of the
       // app falls back to, but stored explicitly so they can be overridden
       // later without changing code-level fallbacks everywhere.
-      if (result == 'Registration successful!') {
-        // Log in temporarily so BellaService resolves the correct user key.
-        UserService().authenticate(user.username, user.password);
-        final h = user.height / 100;
-        final bmi = h > 0 ? user.weight / (h * h) : 22.5;
+      if (result == UserService.registrationSuccess) {
+        final bmi = user.bmi > 0 ? user.bmi : 22.5;
         final plan = CareRules.generatePlan(
           bmi: bmi,
           conditions: user.chronicDiseases,
         );
-        await BellaService().saveTargets({
+        await BellaService().seedTargetsFor(user.username, {
           'waterMl': plan.dailyWaterMlTarget,
           'calorieTarget': 2000,
           'meditationMinutes': 10,
           'walkMinutes': 30,
           'breathworkSessions': 1,
         });
-        // Clear the session so they land on the login screen as expected.
-        UserService().logout();
       }
 
       setState(() => _isLoading = false);
 
       if (mounted) {
-        if (result == "Registration successful!") {
+        if (result == UserService.registrationSuccess) {
           // Clear form
           _usernameController.clear();
           _passwordController.clear();
@@ -100,13 +99,7 @@ class _SignupScreenState extends State<SignupScreen> {
           _weightController.clear();
 
           // Show success and go to login
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result),
-              backgroundColor: SageColors.moss,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          SageFeedback.success(context, result);
 
           // Go back to login screen
           Navigator.pushReplacement(
@@ -115,13 +108,7 @@ class _SignupScreenState extends State<SignupScreen> {
           );
         } else {
           setState(() => _errorMessage = result);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result),
-              backgroundColor: SageColors.clay,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          SageFeedback.problem(context, result);
         }
       }
     }
@@ -168,7 +155,7 @@ class _SignupScreenState extends State<SignupScreen> {
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: SageColors.clay.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: SageRadius.round(12),
                       border: Border.all(
                           color: SageColors.clay.withValues(alpha: 0.3)),
                     ),
@@ -359,35 +346,10 @@ class _SignupScreenState extends State<SignupScreen> {
 
                 const SizedBox(height: 36),
 
-                SizedBox(
-                  width: double.infinity,
-                  height: 52,
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _handleSignup,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: SageColors.moss,
-                      foregroundColor: SageColors.linen,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: _isLoading
-                        ? SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                                color: SageColors.linen, strokeWidth: 2),
-                          )
-                        : const Text(
-                            'CREATE ACCOUNT',
-                            style: TextStyle(
-                              fontSize: 14.5,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.8,
-                            ),
-                          ),
-                  ),
+                SageButton(
+                  label: 'Create account',
+                  loading: _isLoading,
+                  onPressed: _handleSignup,
                 ),
 
                 const SizedBox(height: 20),
@@ -426,17 +388,7 @@ class _SignupScreenState extends State<SignupScreen> {
     );
   }
 
-  Widget _sectionLabel(String text) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 0.5,
-        color: SageColors.inkSoft,
-      ),
-    );
-  }
+  Widget _sectionLabel(String text) => SectionHeader(title: text, dense: true);
 
   Widget _buildConditionChips() {
     return Wrap(
@@ -465,8 +417,7 @@ class _SignupScreenState extends State<SignupScreen> {
             color: selected ? SageColors.moss : SageColors.inkSoft,
             fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
           ),
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape: RoundedRectangleBorder(borderRadius: SageRadius.round(20)),
         );
       }).toList(),
     );
@@ -518,23 +469,23 @@ class _SignupScreenState extends State<SignupScreen> {
       filled: true,
       fillColor: SageColors.card,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide(color: SageColors.line),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide(color: SageColors.moss, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide(color: SageColors.clay, width: 1),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide(color: SageColors.clay, width: 1.5),
       ),
     );

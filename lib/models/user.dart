@@ -1,8 +1,5 @@
 // models/user.dart
 
-// REMOVE this line for now since build_runner isn't working
-// part 'user.g.dart';
-
 /// Fixed list of selectable chronic conditions, shown as a multi-select on
 /// signup and editable from the profile screen. Deliberately not free text —
 /// a closed list keeps the data consistent for anything downstream (e.g.
@@ -22,28 +19,15 @@ class ChronicConditions {
   ];
 }
 
-// Keep @HiveType annotations commented out for now
-// @HiveType(typeId: 0)
+/// Profile data for one account. Credentials are not part of it: the password
+/// hash lives only in the `users` box, see UserService.
 class User {
-  // @HiveField(0)
   final String username;
-
-  // @HiveField(1)
-  final String password;
-
-  // @HiveField(2)
   final int age;
-
-  // @HiveField(3)
   final String gender;
-
-  // @HiveField(4)
   final double height;
-
-  // @HiveField(5)
   final double weight;
 
-  // @HiveField(6)
   /// Conditions picked from [ChronicConditions.options]. Empty means "None".
   final List<String> chronicDiseases;
 
@@ -54,7 +38,6 @@ class User {
 
   User({
     required this.username,
-    required this.password,
     required this.age,
     required this.gender,
     required this.height,
@@ -74,11 +57,32 @@ class User {
 
   bool hasChronicDisease(String name) => chronicDiseases.contains(name);
 
+  User copyWith({
+    int? age,
+    String? gender,
+    double? height,
+    double? weight,
+    List<String>? chronicDiseases,
+    int? dailyStepGoal,
+    int? waterGoal,
+    int? caloriesGoal,
+  }) =>
+      User(
+        username: username,
+        age: age ?? this.age,
+        gender: gender ?? this.gender,
+        height: height ?? this.height,
+        weight: weight ?? this.weight,
+        chronicDiseases: chronicDiseases ?? this.chronicDiseases,
+        dailyStepGoal: dailyStepGoal ?? this.dailyStepGoal,
+        waterGoal: waterGoal ?? this.waterGoal,
+        caloriesGoal: caloriesGoal ?? this.caloriesGoal,
+      );
+
   // Convert to Map for Hive storage
   Map<String, dynamic> toMap() {
     return {
       'username': username,
-      'password': password,
       'age': age,
       'gender': gender,
       'height': height,
@@ -94,7 +98,6 @@ class User {
   factory User.fromMap(Map<String, dynamic> map) {
     return User(
       username: map['username'] ?? '',
-      password: map['password'] ?? '',
       age: map['age'] ?? 0,
       gender: map['gender'] ?? '',
       height: map['height']?.toDouble() ?? 0.0,

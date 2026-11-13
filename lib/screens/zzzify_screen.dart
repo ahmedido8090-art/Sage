@@ -1,4 +1,10 @@
 // screens/zzzify_screen.dart
+import '../widgets/sage_feedback.dart';
+import '../band/band_monitor.dart';
+import '../widgets/sage_illustration.dart';
+import '../widgets/sage_states.dart';
+import '../theme/tokens.dart';
+import '../widgets/sage_card.dart';
 import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../services/bella_service.dart';
@@ -182,12 +188,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
       } else {
         msg = 'Sleep logged. ${skipped.length} wind-down steps skipped.';
       }
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-            content: Text(msg),
-            backgroundColor:
-                skipped.isEmpty ? SageColors.moss : SageColors.amber),
-      );
+      SageFeedback.success(context, msg);
     }
   }
 
@@ -444,7 +445,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
                     margin: const EdgeInsets.only(bottom: 20),
                     decoration: BoxDecoration(
                       color: SageColors.line,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: SageRadius.round(2),
                     ),
                   ),
                 ),
@@ -454,12 +455,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: SageColors.moss.withValues(alpha: 0.1),
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(4),
-                        topRight: Radius.circular(16),
-                        bottomLeft: Radius.circular(16),
-                        bottomRight: Radius.circular(16),
-                      ),
+                      borderRadius: SageRadius.notched(16),
                     ),
                     child: Icon(Icons.nights_stay_outlined,
                         color: SageColors.moss, size: 22),
@@ -532,12 +528,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
                       foregroundColor: SageColors.linen,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(4),
-                          topRight: Radius.circular(14),
-                          bottomLeft: Radius.circular(14),
-                          bottomRight: Radius.circular(14),
-                        ),
+                        borderRadius: SageRadius.notched(14),
                       ),
                     ),
                     onPressed: () {
@@ -799,8 +790,9 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
           onTap: () => Navigator.push(
             context,
             MaterialPageRoute(
-                builder: (_) => const BreathworkScreen(
-                    initialHeartRate: 72, autoStart: true)),
+                builder: (_) => BreathworkScreen(
+                    initialHeartRate: BandMonitor.instance.heartRateOrZero,
+                    autoStart: true)),
           ),
         ));
       }
@@ -1524,7 +1516,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
               decoration: BoxDecoration(
                 color: SageColors.moss.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: SageRadius.round(20),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
                 Icon(Icons.access_time, size: 14, color: SageColors.moss),
@@ -1592,8 +1584,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
             style: ElevatedButton.styleFrom(
               backgroundColor: SageColors.moss,
               foregroundColor: SageColors.linen,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(borderRadius: SageRadius.round(12)),
             ),
             child: Text(
               _editingId != null ? 'Update session' : 'Save session',
@@ -1638,7 +1629,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: streakColor.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: SageRadius.round(10),
                 border: Border.all(color: streakColor.withValues(alpha: 0.3)),
               ),
               child: Row(mainAxisSize: MainAxisSize.min, children: [
@@ -1664,7 +1655,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
         // Progress bar
         const SizedBox(height: 8),
         ClipRRect(
-          borderRadius: BorderRadius.circular(4),
+          borderRadius: SageRadius.round(4),
           child: LinearProgressIndicator(
             value: total > 0 ? done / total : 0,
             minHeight: 4,
@@ -1737,7 +1728,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: SageColors.amber.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: SageRadius.round(10),
               border:
                   Border.all(color: SageColors.amber.withValues(alpha: 0.2)),
             ),
@@ -1761,7 +1752,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: SageColors.moss.withValues(alpha: 0.07),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: SageRadius.round(10),
               border: Border.all(color: SageColors.moss.withValues(alpha: 0.2)),
             ),
             child: Row(children: [
@@ -1803,7 +1794,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
                               horizontal: 14, vertical: 7),
                           decoration: BoxDecoration(
                             color: sel ? SageColors.moss : SageColors.card,
-                            borderRadius: BorderRadius.circular(20),
+                            borderRadius: SageRadius.round(20),
                             border: Border.all(
                                 color: sel ? SageColors.moss : SageColors.line),
                           ),
@@ -1840,7 +1831,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
                 color: _showToday
                     ? SageColors.amber.withValues(alpha: 0.12)
                     : SageColors.card,
-                borderRadius: BorderRadius.circular(20),
+                borderRadius: SageRadius.round(20),
                 border: Border.all(
                   color: _showToday ? SageColors.amber : SageColors.line,
                 ),
@@ -1940,12 +1931,11 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
       List<SleepEntry> filtered, List<SleepEntry> graphEntries) {
     if (filtered.isEmpty) {
       return _card(
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 18),
-            child: Text('No entries for this period',
-                style: TextStyle(color: SageColors.inkSoft, fontSize: 13)),
-          ),
+        child: const EmptyState(
+          art: SageArt.moon,
+          title: 'No nights in this period',
+          message: 'Try a longer range, or log a night to see it here.',
+          compact: true,
         ),
       );
     }
@@ -2002,7 +1992,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
                     decoration: BoxDecoration(
                       color: (e.isNap ? SageColors.amber : SageColors.moss)
                           .withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(6),
+                      borderRadius: SageRadius.round(6),
                     ),
                     child: Text(e.isNap ? 'Nap' : 'Night',
                         style: TextStyle(
@@ -2222,7 +2212,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: SageColors.moss.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         border: Border.all(color: SageColors.moss.withValues(alpha: 0.2)),
       ),
       child: Row(children: [
@@ -2287,7 +2277,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
                       height: h,
                       decoration: BoxDecoration(
                         color: col.withValues(alpha: isToday ? 1.0 : 0.7),
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: SageRadius.round(4),
                         border:
                             isToday ? Border.all(color: col, width: 1.5) : null,
                       ),
@@ -2329,7 +2319,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: selected ? SageColors.moss : SageColors.card,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: SageRadius.round(20),
           border:
               Border.all(color: selected ? SageColors.moss : SageColors.line),
         ),
@@ -2351,7 +2341,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
         decoration: BoxDecoration(
           color: selected ? SageColors.moss : SageColors.linen,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: SageRadius.round(20),
           border:
               Border.all(color: selected ? SageColors.moss : SageColors.line),
         ),
@@ -2371,7 +2361,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: insight.color.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: SageRadius.round(12),
         border: Border.all(color: insight.color.withValues(alpha: 0.22)),
       ),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2398,7 +2388,7 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
         decoration: BoxDecoration(
           color: SageColors.linen,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: SageRadius.round(12),
           border: Border.all(color: SageColors.line),
         ),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -2411,34 +2401,10 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
     );
   }
 
-  Widget _buildSectionLabel(String text) {
-    return Text(
-      text,
-      style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-          color: SageColors.inkSoft),
-    );
-  }
+  Widget _buildSectionLabel(String text) =>
+      SectionHeader(title: text, dense: true);
 
-  Widget _card({required Widget child}) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: SageColors.card,
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(4),
-          topRight: Radius.circular(20),
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
-        border: Border.all(color: SageColors.line),
-      ),
-      child: child,
-    );
-  }
+  Widget _card({required Widget child}) => SageCard(child: child);
 }
 
 // ── Data classes ─────────────────────────────────────────────────────────────
@@ -2512,7 +2478,7 @@ class _NudgeBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: SageRadius.round(8),
         border: Border.all(color: color.withValues(alpha: 0.25)),
       ),
       child: Row(children: [

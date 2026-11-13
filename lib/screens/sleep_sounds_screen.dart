@@ -20,6 +20,8 @@
 //
 // Dependencies: audioplayers (already in pubspec), everything else from app.
 
+import '../widgets/sage_card.dart';
+import '../theme/tokens.dart';
 import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import '../services/bella_service.dart';
@@ -142,12 +144,10 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
   List<String?> get _slotSound => _svc.slotSound; // sound name in each slot
   List<double> get _slotVolume => _svc.slotVolume; // 0.0–1.0
   List<bool> get _slotPlaying => _svc.slotPlaying;
-  List<DateTime?>? get _slotStart => _svc.slotStart;
 
   // Convenience: which sounds are currently active in any slot.
   bool _isActive(String name) => _svc.isActive(name);
   bool _isPlaying(String name) => _svc.isPlaying(name);
-  int _slotOf(String name) => _svc.slotOf(name);
 
   // ── Recommendation ─────────────────────────────────────────────────────────
   String? _recommendedSound;
@@ -159,7 +159,6 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
   // ── Session tracking (for Bella logging) ─────────────────────────────────
   // Records when playback first starts so elapsed minutes can be computed
   // when the user stops. Only set while something is playing.
-  DateTime? _sessionStartedAt;
 
   /// When true, sounds keep playing if the screen turns off, the user
   /// switches to another feature (or screen) in the app, or backgrounds the
@@ -214,14 +213,6 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
   void _onServiceChanged() {
     if (_isDisposed || !mounted) return;
 
-    // Session tracking: stamp start time when playback first becomes active;
-    // log to Bella when playback transitions from active → fully stopped.
-    if (_svc.anyPlaying) {
-      _sessionStartedAt ??= DateTime.now();
-    } else if (!_svc.anyActive && _sessionStartedAt != null) {
-      _logSleepSoundsSession();
-    }
-
     setState(() {});
     if (_svc.anyActive) {
       if (_panelController.status != AnimationStatus.forward &&
@@ -236,18 +227,6 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
     }
   }
 
-  /// Logs the completed sleep-sounds session to Bella so it shows up in
-  /// Insights, achievements, and the wellness score. Only logs sessions
-  /// of at least 1 minute to avoid phantom entries from quick taps.
-  void _logSleepSoundsSession() {
-    final started = _sessionStartedAt;
-    _sessionStartedAt = null;
-    if (started == null) return;
-    final minutes = DateTime.now().difference(started).inMinutes;
-    if (minutes < 1) return;
-    _bella.logSession('sleep_sounds', minutes);
-  }
-
   @override
   void dispose() {
     _isDisposed = true;
@@ -260,7 +239,6 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
     // stops playback, matching the original behaviour. If it's on, the
     // singleton keeps the players running after this State is gone.
     if (!_svc.playInBackground) {
-      _logSleepSoundsSession(); // log elapsed time before stopping
       _svc.stopAllAndClose();
     }
     super.dispose();
@@ -464,7 +442,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
         color: SageColors.moss.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: SageRadius.round(12),
         border: Border.all(color: SageColors.moss.withValues(alpha: 0.2)),
       ),
       child: Row(children: [
@@ -519,7 +497,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
         width: 100,
         decoration: BoxDecoration(
           color: active ? accent.withValues(alpha: 0.14) : SageColors.card,
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: SageRadius.round(18),
           border: Border.all(
             color: active
                 ? accent
@@ -554,7 +532,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
                 padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                 decoration: BoxDecoration(
                   color: accent.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(4),
+                  borderRadius: SageRadius.round(4),
                 ),
                 child: Text(
                   'For you',
@@ -610,7 +588,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
             ),
             child: Icon(
               _isPlaying(sound.name) ? Icons.pause : Icons.play_arrow,
-              color: Colors.white,
+              color: SageColors.onFill(accent),
               size: 10,
             ),
           ),
@@ -627,7 +605,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
       decoration: BoxDecoration(
         color: SageColors.card,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: SageRadius.round(18),
         border: Border.all(color: SageColors.line),
       ),
       child: Column(
@@ -748,7 +726,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: selected ? SageColors.moss : SageColors.card,
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: SageRadius.round(20),
               border: Border.all(
                 color: selected ? SageColors.moss : SageColors.line,
               ),
@@ -797,7 +775,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
         border: Border(top: BorderSide(color: SageColors.line)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
+            color: SageColors.shadow(0.06),
             blurRadius: 16,
             offset: const Offset(0, -4),
           ),
@@ -814,7 +792,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
             margin: const EdgeInsets.only(bottom: 14),
             decoration: BoxDecoration(
               color: SageColors.line,
-              borderRadius: BorderRadius.circular(2),
+              borderRadius: SageRadius.round(2),
             ),
           ),
 
@@ -921,7 +899,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
           // feature, instead of auto-pausing.
           InkWell(
             onTap: () => _setPlayInBackground(!_playInBackground),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: SageRadius.round(12),
             child: Padding(
               padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
@@ -972,7 +950,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
         ),
         child: Icon(
           playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
-          color: playing ? Colors.white : accent,
+          color: playing ? SageColors.onFill(accent) : accent,
           size: inner,
         ),
       ),
@@ -989,7 +967,7 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: SageColors.card,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: SageRadius.round(18),
         border: Border.all(color: SageColors.line),
       ),
       child: Column(
@@ -1099,15 +1077,5 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
   // Helpers
   // ─────────────────────────────────────────────────────────────────────────
 
-  Widget _sectionLabel(String text) {
-    return Text(
-      text,
-      style: TextStyle(
-        fontSize: 11,
-        fontWeight: FontWeight.w600,
-        letterSpacing: 1.2,
-        color: SageColors.inkSoft,
-      ),
-    );
-  }
+  Widget _sectionLabel(String text) => SectionHeader(title: text, dense: true);
 }

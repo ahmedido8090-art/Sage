@@ -37,7 +37,9 @@ class MetricTile extends StatelessWidget {
     return Reveal(
       child: Pressable(
         onTap: onTap,
-        child: Container(
+        semanticLabel: '$label: $value',
+        child: ExcludeSemantics(
+            child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
           decoration: BoxDecoration(
             color: SageColors.card,
@@ -66,11 +68,11 @@ class MetricTile extends StatelessWidget {
               const SizedBox(height: 3),
               Text(
                 label,
-                style: TextStyle(fontSize: 11.5, color: SageColors.inkSoft),
+                style: SageText.caption(),
               ),
             ],
           ),
-        ),
+        )),
       ),
     );
   }

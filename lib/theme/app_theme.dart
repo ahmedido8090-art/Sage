@@ -8,43 +8,44 @@
 //   Clay accent:    #E8714A   warm coral-orange, replaces the old #E2734B
 //   Amber accent:   #E8A832   golden amber, slightly richer than old #EAAE49
 //
-// Dark mode went through several revisions before landing here — "Sage
-// Dusk" (desaturated near-black) read flat and heavy; "Moss Twilight"
-// (lighter mid-tone dim) read muddy and dated. "Sage Noir" is the fix:
-// a genuinely black page background with vivid, saturated accents
-// instead of muted/dusty ones, so the app feels fresh rather than old.
-//   Page bg dark:   #0A0D0B   true black, only a whisper of green
-//   Card dark:      #141B17   lifted from bg so cards float without shadow
-//   Hero bg dark:   #113A28   saturated emerald — same hue family as the
-//                              moss accent, not a grayed-down olive. Sits
-//                              lighter than the very first black-hero
-//                              attempt, but still reads as the anchor
-//                              surface since it's darker than card.
-//   Moss dark:      #2EE6A0   vivid mint-emerald, not muted forest green
-//   Clay dark:      #FF7A59   punchy coral, not dusty terracotta
-//   Amber dark:     #FFC247   clean saturated gold, not muddy ochre
+// Dark mode is the same system in a different light, not an inverted copy:
+// identical hues, shapes, type and spacing, with surfaces layered by lightness
+// instead of shadow (page < card < raised) and accents lifted just enough to
+// stay vivid and pass WCAG AA on every surface. The numbers are checked by
+// test/theme/contrast_test.dart.
+//   Page dark:      #101713   deep green-black, never pure black
+//   Card dark:      #18221D   one step up
+//   Raised dark:    #202D26   sheets, dialogs, snackbars
+//   Hero bg dark:   #1A5239   emerald panel, lighter than the card so the
+//                              dashboard anchor reads as the top layer
+//   Moss dark:      #4CCB8D   the light-mode green, lifted
+//   Clay dark:      #F28D6E   the light-mode coral, lifted
+//   Amber dark:     #F4BF5A   the light-mode amber, lifted
 //
 // Everything else (mossLight, sage, ink, line, hero tokens) is derived
 // from those anchors by lightening/darkening/blending — not invented
 // independently — so the palette stays internally coherent.
 //
-// Typography: Manrope (wordmark, headlines — swapped from Fraunces italic,
-// which read too ornate for the brand), Inter (all UI body text),
-// IBM Plex Mono (biometric numbers). Fraunces italic is kept only for
-// pull-quotes, where an editorial voice still fits.
+// Typography: one humanist family, Nunito, whose rounded terminals read as
+// friendly rather than corporate. Weight and size carry the hierarchy
+// (wordmark and headlines w800/w700, body w400, labels w600). Numbers use
+// Nunito's tabular figures so columns still align. Fraunces italic stays for
+// pull-quotes, where a warm editorial voice fits.
 import 'package:flutter/material.dart' as fm
     show TextTheme; // ignore: deprecated_member_use
 import 'package:material_ui/material_ui.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'tokens.dart';
 
 /// Controls light/dark mode app-wide and persists the choice.
 ///
 /// [SageColors]' fields are mutable static fields that get swapped in place
-/// when the mode changes. Wrapping the app root in a
-/// `ValueListenableBuilder<bool>` on [ThemeController.isDark] forces a full
-/// rebuild whenever that happens, so every screen picks up the new colors
-/// automatically without threading Theme.of(context) everywhere.
+/// when the mode changes. Screens read them directly instead of through
+/// `Theme.of(context)`, so after swapping the palette every live element is
+/// marked for rebuild. That repaints the whole app in one frame while keeping
+/// the navigator stack and each screen's state, which recreating the
+/// `MaterialApp` would throw away.
 class ThemeController {
   ThemeController._();
 
@@ -55,22 +56,32 @@ class ThemeController {
   static Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getBool(_prefsKey) ?? false;
+    _applyPalette(saved);
     isDark.value = saved;
-    _applyPalette();
   }
 
   static Future<void> setDark(bool value) async {
     if (isDark.value == value) return;
+    _applyPalette(value);
+    _rebuildLiveElements();
     isDark.value = value;
-    _applyPalette();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefsKey, value);
   }
 
   static Future<void> toggle() => setDark(!isDark.value);
 
-  static void _applyPalette() {
-    if (isDark.value) {
+  static void _rebuildLiveElements() {
+    void visit(Element element) {
+      element.markNeedsBuild();
+      element.visitChildren(visit);
+    }
+
+    WidgetsBinding.instance.rootElement?.visitChildren(visit);
+  }
+
+  static void _applyPalette(bool dark) {
+    if (dark) {
       SageColors._useDark();
     } else {
       SageColors._useLight();
@@ -111,6 +122,10 @@ class SageColors {
   /// Card surface. Pure white for maximum contrast against the tinted bg.
   static const Color _lightCard = Color(0xFFFFFFFF);
 
+  /// Raised surface in light mode: same white as cards; elevation there
+  /// comes from a soft shadow instead of a lighter layer.
+  static const Color _lightCardRaised = Color(0xFFFFFFFF);
+
   /// Warm coral-orange accent. Replaces the old clay; slightly brighter
   /// and more vibrant so it reads as a real second color, not a wash.
   static const Color _lightClay = Color(0xFFE8714A);
@@ -139,70 +154,68 @@ class SageColors {
 
   /// Primary green in dark mode. Vivid mint-emerald — the color that
   /// sets the "fresh" tone for the whole dark palette.
-  static const Color _darkMoss = Color(0xFF2EE6A0);
+  static const Color _darkMoss = Color(0xFF4CCB8D);
 
   /// Lighter primary dark. Used for active nav indicators, selected states.
-  static const Color _darkMossLight = Color(0xFF5FF0BE);
+  static const Color _darkMossLight = Color(0xFF7DDDB0);
 
   /// Muted mid-green dark. Subtler than _darkMoss; suits dividers,
   /// background tints, and the Chronic Care activity tile accent where
   /// full-saturation moss would be too loud.
-  static const Color _darkSage = Color(0xFF4F9B83);
+  static const Color _darkSage = Color(0xFF62B493);
 
   /// Page background dark. #0A0D0B — genuinely black, with only a
   /// whisper of green so it still feels like Sage.
-  static const Color _darkLinen = Color(0xFF0A0D0B);
+  static const Color _darkLinen = Color(0xFF101713);
+
+  /// Raised surface dark (sheets, dialogs, snackbars) — the third layer.
+  static const Color _darkCardRaised = Color(0xFF202D26);
 
   /// Card surface dark. Lifted from the bg so cards float without
   /// needing shadows. #141B17 — still dark but visibly distinct.
-  static const Color _darkCard = Color(0xFF141B17);
+  static const Color _darkCard = Color(0xFF18221D);
 
   /// Clay accent in dark mode. Punchy coral instead of dusty terracotta.
-  static const Color _darkClay = Color(0xFFFF7A59);
+  static const Color _darkClay = Color(0xFFF28D6E);
 
   /// Amber accent in dark mode. Clean saturated gold instead of muddy ochre.
-  static const Color _darkAmber = Color(0xFFFFC247);
+  static const Color _darkAmber = Color(0xFFF4BF5A);
 
   /// Primary text in dark mode. Near-white with a faint green cast —
   /// easier on the eye than pure white against true black.
-  static const Color _darkInk = Color(0xFFF5FBF7);
+  static const Color _darkInk = Color(0xFFE9F3EC);
 
   /// Secondary text in dark mode. Mid green-grey, lifted enough to stay
   /// legible against the black page.
-  static const Color _darkInkSoft = Color(0xFF86998F);
+  static const Color _darkInkSoft = Color(0xFFA3B8AC);
 
   /// Separator / border in dark mode. Just light enough to register
   /// against true black.
-  static const Color _darkLine = Color(0xFF1F2A24);
+  static const Color _darkLine = Color(0xFF2D3B34);
 
   /// Hero card panel bg in dark mode. #113A28 — a saturated emerald in
   /// the same hue family as the moss accent (not a grayed-down olive).
   /// Lighter than the very first near-black hero attempt, but still
   /// darker than the card surface so it keeps its identity as the
   /// dashboard's anchor element.
-  static const Color _darkHeroBg = Color(0xFF113A28);
+  static const Color _darkHeroBg = Color(0xFF1A5239);
 
-  // ── Hero foreground (mode-invariant) ─────────────────────────────────────
+  // ── Hero foreground ─────────────────────────────────────────────────────
   //
-  // These are always rendered on top of a dark green hero panel (either
-  // _lightHeroBg or _darkHeroBg). Because the panel is always dark, these
-  // tokens don't need to flip with the rest of the palette.
+  // Rendered on the hero panel, which is a different green in each mode, so
+  // the text tiers are tuned per mode to keep AA contrast on their panel.
 
-  /// The large BPM number. Near-white, green-tinted.
-  static const Color _heroNumber = Color(0xFFEEF8F2);
+  static const Color _lightHeroNumber = Color(0xFFEEF8F2);
+  static const Color _lightHeroLabel = Color(0xFFEDF7F1);
+  static const Color _lightHeroLabelMuted = Color(0xFFE3F2E9);
+  static const Color _lightHeroSubLabel = Color(0xFFE1F2E8);
 
-  /// The connection status chip text.
-  static const Color _heroLabel = Color(0xFFC0E0CC);
+  static const Color _darkHeroNumber = Color(0xFFF1FAF4);
+  static const Color _darkHeroLabel = Color(0xFFCFE8D8);
+  static const Color _darkHeroLabelMuted = Color(0xFFA9CDB8);
+  static const Color _darkHeroSubLabel = Color(0xFF9CC3AB);
 
-  /// Battery percentage and secondary chip text. More muted.
-  static const Color _heroLabelMuted = Color(0xFF88B89E);
-
-  /// "Resting · steady" subtitle line.
-  static const Color _heroSubLabel = Color(0xFF78A88E);
-
-  /// The pulse wave line color. Brightened slightly alongside the "Sage
-  /// Noir" pass so it doesn't look flat against the more saturated
-  /// _darkHeroBg.
+  /// The pulse wave line color.
   static const Color _heroLine = Color(0xFF5FCB98);
 
   /// The green dot when band is connected.
@@ -211,6 +224,11 @@ class SageColors {
   /// The amber dot when band is disconnected.
   static const Color _heroAccentWarn = Color(0xFFFFB040);
 
+  /// Text/icons on a solid accent fill: white on the light-mode accents,
+  /// deep ink on the lifted dark-mode accents.
+  static const Color _lightOnAccent = Color(0xFFFFFFFF);
+  static const Color _darkOnAccent = Color(0xFF0B1410);
+
   // ── Mutable palette fields (swapped on mode change) ───────────────────────
 
   static Color moss = _lightMoss;
@@ -218,6 +236,8 @@ class SageColors {
   static Color sage = _lightSage;
   static Color linen = _lightLinen;
   static Color card = _lightCard;
+  static Color cardRaised = _lightCardRaised;
+  static Color onAccent = _lightOnAccent;
   static Color clay = _lightClay;
   static Color amber = _lightAmber;
   static Color ink = _lightInk;
@@ -225,15 +245,57 @@ class SageColors {
   static Color line = _lightLine;
 
   static Color heroBg = _lightHeroBg;
-  static Color heroNumber = _heroNumber;
-  static Color heroLabel = _heroLabel;
-  static Color heroLabelMuted = _heroLabelMuted;
-  static Color heroSubLabel = _heroSubLabel;
+  static Color heroNumber = _lightHeroNumber;
+  static Color heroLabel = _lightHeroLabel;
+  static Color heroLabelMuted = _lightHeroLabelMuted;
+  static Color heroSubLabel = _lightHeroSubLabel;
   static Color heroLine = _heroLine;
   static Color heroAccentOk = _heroAccentOk;
   static Color heroAccentWarn = _heroAccentWarn;
 
   static bool get isDark => ThemeController.isDark.value;
+
+  /// Surface for bars that sit above the page (bottom navigation): the page
+  /// color in light mode, the card layer in dark mode.
+  static Color get chrome => isDark ? card : linen;
+
+  /// A fixed accent [color] made readable on the current card surface. In
+  /// light mode it is returned unchanged. In dark mode its lightness is
+  /// raised, keeping hue and saturation, until it reaches [minContrast]
+  /// against [card] (deep tones like #145A32 would otherwise disappear).
+  static Color legible(Color color, {double minContrast = 4.5}) {
+    if (!isDark) return color;
+    var hsl = HSLColor.fromColor(color);
+    for (var i = 0;
+        i < 40 && _contrast(hsl.toColor(), card) < minContrast;
+        i++) {
+      final next = (hsl.lightness + 0.02).clamp(0.0, 0.9);
+      if (next == hsl.lightness) break;
+      hsl = hsl.withLightness(next);
+    }
+    return hsl.toColor();
+  }
+
+  /// Text/icon color for an arbitrary accent [fill]. Light mode keeps white;
+  /// dark mode picks whichever of white or deep ink contrasts more.
+  static Color onFill(Color fill) {
+    if (!isDark) return _lightOnAccent;
+    return _contrast(_darkOnAccent, fill) >= _contrast(_lightOnAccent, fill)
+        ? _darkOnAccent
+        : _lightOnAccent;
+  }
+
+  static double _contrast(Color a, Color b) {
+    final la = a.computeLuminance(), lb = b.computeLuminance();
+    final hi = la > lb ? la : lb, lo = la > lb ? lb : la;
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  /// Drop-shadow color at [alpha] (the value used in light mode). Dark
+  /// surfaces separate mostly by layer, so their shadows only double up to
+  /// stay perceptible against the darker page, never a heavy glow.
+  static Color shadow(double alpha) => const Color(0xFF000000)
+      .withValues(alpha: isDark ? (alpha * 2).clamp(0.0, 0.3) : alpha);
 
   static void _useLight() {
     moss = _lightMoss;
@@ -241,18 +303,18 @@ class SageColors {
     sage = _lightSage;
     linen = _lightLinen;
     card = _lightCard;
+    cardRaised = _lightCardRaised;
+    onAccent = _lightOnAccent;
     clay = _lightClay;
     amber = _lightAmber;
     ink = _lightInk;
     inkSoft = _lightInkSoft;
     line = _lightLine;
     heroBg = _lightHeroBg;
-    // Hero foreground tokens are mode-invariant; reassigning them here
-    // is a no-op but makes the symmetry with _useDark explicit.
-    heroNumber = _heroNumber;
-    heroLabel = _heroLabel;
-    heroLabelMuted = _heroLabelMuted;
-    heroSubLabel = _heroSubLabel;
+    heroNumber = _lightHeroNumber;
+    heroLabel = _lightHeroLabel;
+    heroLabelMuted = _lightHeroLabelMuted;
+    heroSubLabel = _lightHeroSubLabel;
     heroLine = _heroLine;
     heroAccentOk = _heroAccentOk;
     heroAccentWarn = _heroAccentWarn;
@@ -264,53 +326,72 @@ class SageColors {
     sage = _darkSage;
     linen = _darkLinen;
     card = _darkCard;
+    cardRaised = _darkCardRaised;
+    onAccent = _darkOnAccent;
     clay = _darkClay;
     amber = _darkAmber;
     ink = _darkInk;
     inkSoft = _darkInkSoft;
     line = _darkLine;
     heroBg = _darkHeroBg;
-    heroNumber = _heroNumber;
-    heroLabel = _heroLabel;
-    heroLabelMuted = _heroLabelMuted;
-    heroSubLabel = _heroSubLabel;
+    heroNumber = _darkHeroNumber;
+    heroLabel = _darkHeroLabel;
+    heroLabelMuted = _darkHeroLabelMuted;
+    heroSubLabel = _darkHeroSubLabel;
     heroLine = _heroLine;
     heroAccentOk = _heroAccentOk;
     heroAccentWarn = _heroAccentWarn;
   }
 }
 
-/// Type scale for Sage Health.
-///
-/// Three fonts, three distinct roles:
-///   Manrope    — wordmark and section headlines. Swapped from Fraunces
-///                italic, which read too ornate for the brand; Manrope's
-///                rounded terminals stay calm without going editorial.
-///   Fraunces   — pull-quotes only now. Italic + w400 keeps an editorial
-///                voice for inspirational copy without touching the
-///                wordmark or headlines.
-///   Inter      — all UI body text, labels, buttons, navigation.
-///                Applied app-wide via [SageTheme]; nothing needs to
-///                import it explicitly.
-///   IBM Plex Mono — biometric numbers only (BPM, steps, scores, kcal).
-///                Makes instrument data read as data, not as labels.
+/// Type scale for Sage Health. All Nunito except the pull-quote.
 class SageText {
   SageText._();
 
-  /// The "sage" wordmark — Manrope, upright, w700. Swapped from italic
-  /// Fraunces, which read too fancy/ornate for the brand's voice.
-  static TextStyle wordmark({Color? color}) => GoogleFonts.manrope(
-        fontWeight: FontWeight.w700,
-        fontSize: 22,
+  /// The "sage" wordmark.
+  static TextStyle wordmark({Color? color}) => GoogleFonts.nunito(
+        fontWeight: FontWeight.w800,
+        fontSize: 24,
+        letterSpacing: -0.2,
         color: color ?? SageColors.moss,
       );
 
-  /// Section headline — Manrope w700, generous line height. Swapped from
-  /// Fraunces upright for the same reason as the wordmark.
-  static TextStyle headline({Color? color}) => GoogleFonts.manrope(
+  /// Screen and hero headline.
+  static TextStyle headline({Color? color}) => GoogleFonts.nunito(
+        fontWeight: FontWeight.w800,
+        fontSize: 26,
+        height: 1.2,
+        letterSpacing: -0.2,
+        color: color ?? SageColors.ink,
+      );
+
+  /// Card and section title, one step below [headline].
+  static TextStyle title({Color? color}) => GoogleFonts.nunito(
         fontWeight: FontWeight.w700,
-        fontSize: 25,
-        height: 1.25,
+        fontSize: 18,
+        height: 1.3,
+        color: color ?? SageColors.ink,
+      );
+
+  /// Default reading text. A touch of extra line height gives it air.
+  static TextStyle body({Color? color}) => GoogleFonts.nunito(
+        fontSize: 15,
+        height: 1.5,
+        color: color ?? SageColors.ink,
+      );
+
+  /// Secondary and helper text.
+  static TextStyle caption({Color? color}) => GoogleFonts.nunito(
+        fontSize: 13,
+        height: 1.45,
+        color: color ?? SageColors.inkSoft,
+      );
+
+  /// Short labels on controls and tiles.
+  static TextStyle label({Color? color, FontWeight weight = FontWeight.w700}) =>
+      GoogleFonts.nunito(
+        fontSize: 14,
+        fontWeight: weight,
         color: color ?? SageColors.ink,
       );
 
@@ -323,20 +404,20 @@ class SageText {
         color: color ?? SageColors.ink,
       );
 
-  /// Biometric number — IBM Plex Mono. Only for numbers that should
-  /// read like instrument readouts: BPM, step count, wellness score,
-  /// calorie count, pillar score bars.
+  /// Numbers (BPM, steps, scores, kcal): rounded, with tabular figures so a
+  /// changing value does not jiggle its neighbours.
   static TextStyle mono({
     required double size,
-    FontWeight weight = FontWeight.w500,
+    FontWeight weight = FontWeight.w700,
     Color? color,
     double? letterSpacing,
   }) =>
-      GoogleFonts.ibmPlexMono(
+      GoogleFonts.nunito(
         fontSize: size,
         fontWeight: weight,
         color: color ?? SageColors.ink,
         letterSpacing: letterSpacing,
+        fontFeatures: const [FontFeature.tabularFigures()],
       );
 }
 
@@ -361,7 +442,7 @@ class SageTheme {
 
     // google_fonts builds a package:flutter TextTheme; copy its styles into
     // the material_ui TextTheme that [ThemeData] expects.
-    final styled = GoogleFonts.interTextTheme(
+    final styled = GoogleFonts.nunitoTextTheme(
       fm.TextTheme(
         displayLarge: base.textTheme.displayLarge,
         displayMedium: base.textTheme.displayMedium,
@@ -403,27 +484,38 @@ class SageTheme {
 
     return base.copyWith(
       textTheme: textTheme,
-      appBarTheme: const AppBarTheme(
+      appBarTheme: AppBarTheme(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
+        foregroundColor: SageColors.ink,
+        centerTitle: false,
+        titleTextStyle: SageText.headline().copyWith(fontSize: 22),
+        iconTheme: IconThemeData(color: SageColors.ink),
       ),
       iconTheme: IconThemeData(color: SageColors.ink),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: SageColors.moss,
-          foregroundColor: SageColors.linen,
+          foregroundColor: SageColors.onAccent,
+          minimumSize: const Size(64, 52),
+          textStyle: GoogleFonts.nunito(
+              fontWeight: FontWeight.w800, fontSize: 15, letterSpacing: 0.2),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(SageRadius.control + 4),
           ),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: SageColors.moss,
+          minimumSize: const Size(64, 52),
+          textStyle: GoogleFonts.nunito(
+              fontWeight: FontWeight.w800, fontSize: 15, letterSpacing: 0.2),
           side: BorderSide(color: SageColors.moss),
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(SageRadius.control + 4),
           ),
         ),
       ),
@@ -436,23 +528,23 @@ class SageTheme {
         filled: true,
         fillColor: SageColors.card,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(SageRadius.control),
           borderSide: BorderSide(color: SageColors.line),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(SageRadius.control),
           borderSide: BorderSide(color: SageColors.line),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(SageRadius.control),
           borderSide: BorderSide(color: SageColors.moss, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(SageRadius.control),
           borderSide: BorderSide(color: SageColors.clay, width: 1),
         ),
         focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(SageRadius.control),
           borderSide: BorderSide(color: SageColors.clay, width: 1.5),
         ),
         hintStyle: TextStyle(color: SageColors.inkSoft),
@@ -494,7 +586,8 @@ class SageTheme {
         selectedColor: SageColors.moss.withValues(alpha: 0.15),
         labelStyle: TextStyle(color: SageColors.ink),
         side: BorderSide(color: SageColors.line),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SageRadius.pill)),
       ),
       dividerTheme: DividerThemeData(
         color: SageColors.line,
@@ -502,24 +595,35 @@ class SageTheme {
         space: 0,
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: SageColors.linen,
+        backgroundColor: SageColors.chrome,
         indicatorColor: SageColors.moss.withValues(alpha: 0.15),
         labelTextStyle: WidgetStateProperty.all(
           TextStyle(fontSize: 11, color: SageColors.inkSoft),
         ),
       ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: SageColors.cardRaised,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: SageRadius.card),
+      ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: SageColors.cardRaised,
+        surfaceTintColor: Colors.transparent,
+      ),
       bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor: SageColors.card,
+        backgroundColor: SageColors.cardRaised,
+        surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
         ),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: isDark ? SageColors.card : SageColors.ink,
+        backgroundColor: isDark ? SageColors.cardRaised : SageColors.ink,
         contentTextStyle: TextStyle(
           color: isDark ? SageColors.ink : SageColors.linen,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(SageRadius.control)),
         behavior: SnackBarBehavior.floating,
       ),
       cardColor: SageColors.card,

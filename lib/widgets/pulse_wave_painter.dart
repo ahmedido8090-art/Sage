@@ -163,7 +163,8 @@ class _PulseWaveState extends State<PulseWave>
     return SizedBox(
       width: double.infinity,
       height: widget.height,
-      child: AnimatedBuilder(
+      child: RepaintBoundary(
+          child: AnimatedBuilder(
         animation: _controller,
         builder: (context, _) => CustomPaint(
           painter: PulseWavePainter(
@@ -172,7 +173,7 @@ class _PulseWaveState extends State<PulseWave>
             dimmed: !widget.isLive,
           ),
         ),
-      ),
+      )),
     );
   }
 }

@@ -3,6 +3,7 @@
 // Animates a labeled progress bar from 0 (or its previous value) to
 // [score]. Duration now comes from SageMotion so it's not an isolated
 // 800ms with no relationship to the rest of the entrance system.
+import '../theme/tokens.dart';
 import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
@@ -96,7 +97,7 @@ class _AnimatedPillarRowState extends State<AnimatedPillarRow>
           const SizedBox(width: 6),
           Expanded(
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: SageRadius.round(4),
               child: LinearProgressIndicator(
                 value: _progress.value,
                 minHeight: 5,

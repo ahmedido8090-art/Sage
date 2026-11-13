@@ -32,6 +32,16 @@
 //   • Recommendations
 //   • Achievements tab
 
+import '../widgets/weekly_summary_card.dart';
+import '../services/weekly_summary.dart';
+import '../widgets/sage_feedback.dart';
+import '../widgets/band_offline_notice.dart';
+import '../widgets/sage_illustration.dart';
+import '../widgets/sage_states.dart';
+import '../widgets/state_copy.dart';
+import '../widgets/sage_card.dart';
+import '../theme/tokens.dart';
+import '../utils/health_metrics.dart';
 import 'dart:math';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
@@ -79,6 +89,9 @@ class _InsightsScreenState extends State<InsightsScreen>
   WellnessScoreResult? _scoreResult;
   WellnessScoreResult? _yesterdayScoreResult;
   bool _isLoading = true;
+
+  /// Set when loading failed; shown as a calm retryable state.
+  Object? _loadError;
   _TotalsPeriod _totalsPeriod = _TotalsPeriod.last14;
   int _trendDays = 14;
 
@@ -263,7 +276,7 @@ class _InsightsScreenState extends State<InsightsScreen>
                 height: 4,
                 decoration: BoxDecoration(
                   color: SageColors.line,
-                  borderRadius: BorderRadius.circular(2),
+                  borderRadius: SageRadius.round(2),
                 ),
               ),
               Padding(
@@ -283,13 +296,8 @@ class _InsightsScreenState extends State<InsightsScreen>
                             ClipboardData(text: reportText));
                         if (ctx.mounted) Navigator.pop(ctx);
                         if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: const Text('Report copied to clipboard'),
-                              backgroundColor: SageColors.moss,
-                              duration: const Duration(seconds: 2),
-                            ),
-                          );
+                          SageFeedback.success(
+                              context, 'Report copied to clipboard');
                         }
                       },
                       icon: Icon(Icons.copy_outlined,
@@ -333,7 +341,10 @@ class _InsightsScreenState extends State<InsightsScreen>
 
   Future<void> _loadAll() async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
 
     try {
       final band = await _dataStorage.getBandData(daysBack: 14);
@@ -372,7 +383,12 @@ class _InsightsScreenState extends State<InsightsScreen>
         });
       }
     } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _loadError = e;
+        });
+      }
       debugPrint('InsightsScreen._loadAll error: $e');
     }
   }
@@ -415,8 +431,6 @@ class _InsightsScreenState extends State<InsightsScreen>
   bool _isReadingFlagged(String condition, ReadingEntry r) =>
       WellnessScoreService.isReadingFlagged(condition, r);
 
-  String _dateKey(DateTime d) => '${d.year}-${d.month}-${d.day}';
-
   String _shortDate(DateTime d) {
     const months = [
       'Jan',
@@ -435,21 +449,8 @@ class _InsightsScreenState extends State<InsightsScreen>
     return '${months[d.month - 1]} ${d.day}';
   }
 
-  int get _currentStreak {
-    if (_allSessions.isEmpty) return 0;
-    final days = _allSessions.map((s) => _dateKey(s.date)).toSet();
-    int streak = 0;
-    var cursor = DateTime.now();
-    for (int i = 0; i < 365; i++) {
-      if (days.contains(_dateKey(cursor))) {
-        streak++;
-        cursor = cursor.subtract(const Duration(days: 1));
-      } else {
-        break;
-      }
-    }
-    return streak;
-  }
+  int get _currentStreak =>
+      streakEndingToday(_allSessions.map((s) => dayKey(s.date)).toSet());
 
   int get _longestStreak {
     if (_allSessions.isEmpty) return 0;
@@ -537,7 +538,7 @@ class _InsightsScreenState extends State<InsightsScreen>
     final nonNap = _sleepEntries.where((e) => !e.isNap).toList();
     if (nonNap.isEmpty) return null;
 
-    final sessionDays = _allSessions.map((s) => _dateKey(s.date)).toSet();
+    final sessionDays = _allSessions.map((s) => dayKey(s.date)).toSet();
 
     int goodNights = 0, goodNightsFollowedByActivity = 0;
     int poorNights = 0, poorNightsFollowedByActivity = 0;
@@ -547,7 +548,7 @@ class _InsightsScreenState extends State<InsightsScreen>
       final nextDay = e.date.add(const Duration(days: 1));
       // Skip if "next day" is still in the future relative to today.
       if (nextDay.isAfter(DateTime.now())) continue;
-      final activeNextDay = sessionDays.contains(_dateKey(nextDay));
+      final activeNextDay = sessionDays.contains(dayKey(nextDay));
       if (e.quality >= 4) {
         goodNights++;
         if (activeNextDay) goodNightsFollowedByActivity++;
@@ -615,28 +616,42 @@ class _InsightsScreenState extends State<InsightsScreen>
                   ],
                 ),
               )
-            : RefreshIndicator(
-                onRefresh: _loadAll,
-                color: SageColors.moss,
-                child: SingleChildScrollView(
-                  controller: _scrollController,
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.only(bottom: 40),
-                  child: Column(
+            : _loadError != null
+                ? Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _buildHeader(),
-                      _buildTabBar(),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                        child: _tabs.index == 0
-                            ? _buildOverviewTab()
-                            : _buildAchievementsTab(),
+                      Expanded(
+                        child: ErrorState(
+                          error: _loadError,
+                          title: 'Your insights hit a snag',
+                          onRetry: _loadAll,
+                        ),
                       ),
                     ],
+                  )
+                : RefreshIndicator(
+                    onRefresh: _loadAll,
+                    color: SageColors.moss,
+                    child: SingleChildScrollView(
+                      controller: _scrollController,
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 40),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildHeader(),
+                          _buildTabBar(),
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                            child: _tabs.index == 0
+                                ? _buildOverviewTab()
+                                : _buildAchievementsTab(),
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
       ),
     );
   }
@@ -684,7 +699,7 @@ class _InsightsScreenState extends State<InsightsScreen>
         decoration: BoxDecoration(
           color: SageColors.card,
           border: Border.all(color: SageColors.line),
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: SageRadius.round(10),
         ),
         child: TabBar(
           controller: _tabs,
@@ -705,7 +720,7 @@ class _InsightsScreenState extends State<InsightsScreen>
           unselectedLabelStyle: const TextStyle(fontSize: 13),
           indicator: BoxDecoration(
             color: SageColors.moss,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: SageRadius.round(8),
           ),
           indicatorSize: TabBarIndicatorSize.tab,
           dividerColor: Colors.transparent,
@@ -727,6 +742,16 @@ class _InsightsScreenState extends State<InsightsScreen>
       size: RevealSize.large,
       children: [
         _buildScoreHero(),
+        const SizedBox(height: 16),
+        WeeklySummaryCard(
+          summary: WeeklySummary.compute(
+            sessions: _allSessions,
+            checkins: _checkins,
+            sleep: _sleepEntries,
+            now: DateTime.now(),
+            variant: DateTime.now().day,
+          ),
+        ),
         const SizedBox(height: 16),
         _buildTrendStrip(),
         const SizedBox(height: 16),
@@ -763,7 +788,7 @@ class _InsightsScreenState extends State<InsightsScreen>
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
       decoration: BoxDecoration(
         color: SageColors.heroBg,
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: SageRadius.round(24),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -809,7 +834,7 @@ class _InsightsScreenState extends State<InsightsScreen>
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.14),
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: SageRadius.round(20),
                     ),
                     child: Text(
                       _scoreLabel,
@@ -825,7 +850,7 @@ class _InsightsScreenState extends State<InsightsScreen>
           ),
           const SizedBox(height: 16),
           ClipRRect(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: SageRadius.round(4),
             child: LinearProgressIndicator(
               value: score / 100,
               minHeight: 6,
@@ -893,7 +918,7 @@ class _InsightsScreenState extends State<InsightsScreen>
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
       decoration: BoxDecoration(
         color: c.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: SageRadius.round(10),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -913,7 +938,7 @@ class _InsightsScreenState extends State<InsightsScreen>
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: SageRadius.round(8),
       ),
       child: Text(
         '$label $score · $weightPct%',
@@ -961,8 +986,8 @@ class _InsightsScreenState extends State<InsightsScreen>
     final days = List.generate(
         windowDays, (i) => now.subtract(Duration(days: windowDays - 1 - i)));
     final counts = days.map((d) {
-      final key = _dateKey(d);
-      return _allSessions.where((s) => _dateKey(s.date) == key).length;
+      final key = dayKey(d);
+      return _allSessions.where((s) => dayKey(s.date) == key).length;
     }).toList();
     final maxCount = counts.isEmpty ? 1 : max(1, counts.reduce(max));
     final totalThisWindow = counts.fold(0, (a, b) => a + b);
@@ -1031,7 +1056,7 @@ class _InsightsScreenState extends State<InsightsScreen>
                                       ? SageColors.amber
                                       : SageColors.moss)
                                   : SageColors.line,
-                              borderRadius: BorderRadius.circular(3),
+                              borderRadius: SageRadius.round(3),
                             ),
                           ),
                           const SizedBox(height: 4),
@@ -1076,7 +1101,7 @@ class _InsightsScreenState extends State<InsightsScreen>
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
               color: selected ? SageColors.moss : Colors.transparent,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: SageRadius.round(8),
               border: Border.all(
                   color: selected ? SageColors.moss : SageColors.line),
             ),
@@ -1133,7 +1158,8 @@ class _InsightsScreenState extends State<InsightsScreen>
                     _DonutSegment(med.toDouble(), SageColors.moss),
                     _DonutSegment(walk.toDouble(), SageColors.clay),
                     _DonutSegment(breath.toDouble(), SageColors.amber),
-                    _DonutSegment(ss.toDouble(), const Color(0xFF5D6D7E)),
+                    _DonutSegment(ss.toDouble(),
+                        SageColors.legible(const Color(0xFF5D6D7E))),
                   ],
                   center: '$total',
                   centerLabel: 'total',
@@ -1149,8 +1175,8 @@ class _InsightsScreenState extends State<InsightsScreen>
                     const SizedBox(height: 8),
                     _legendRow('Breathwork', breath, total, SageColors.amber),
                     const SizedBox(height: 8),
-                    _legendRow(
-                        'Sleep sounds', ss, total, const Color(0xFF5D6D7E)),
+                    _legendRow('Sleep sounds', ss, total,
+                        SageColors.legible(const Color(0xFF5D6D7E))),
                   ],
                 ),
               ),
@@ -1237,12 +1263,12 @@ class _InsightsScreenState extends State<InsightsScreen>
                     ? Icons.air
                     : Icons.nightlight_round,
         color: e.key == 'meditation'
-            ? const Color(0xFF9B59B6)
+            ? SageColors.legible(const Color(0xFF9B59B6))
             : e.key == 'walking'
                 ? SageColors.clay
                 : e.key == 'breathwork'
                     ? SageColors.amber
-                    : const Color(0xFF5D6D7E),
+                    : SageColors.legible(const Color(0xFF5D6D7E)),
         text: '${e.value} total minutes of $label. $qualifier'
             '${benefits[e.key]}, though the effect scales with consistency, '
             'not any single session.$diversityClause',
@@ -1271,7 +1297,7 @@ class _InsightsScreenState extends State<InsightsScreen>
         SizedBox(
           width: 48,
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(3),
+            borderRadius: SageRadius.round(3),
             child: LinearProgressIndicator(
               value: pct,
               minHeight: 4,
@@ -1345,7 +1371,7 @@ class _InsightsScreenState extends State<InsightsScreen>
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: trendColor.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: SageRadius.round(10),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -1377,13 +1403,11 @@ class _InsightsScreenState extends State<InsightsScreen>
     switch (p) {
       case _TotalsPeriod.today:
         return _allSessions
-            .where((s) => _dateKey(s.date) == _dateKey(now))
+            .where((s) => dayKey(s.date) == dayKey(now))
             .toList();
       case _TotalsPeriod.yesterday:
         final y = now.subtract(const Duration(days: 1));
-        return _allSessions
-            .where((s) => _dateKey(s.date) == _dateKey(y))
-            .toList();
+        return _allSessions.where((s) => dayKey(s.date) == dayKey(y)).toList();
       case _TotalsPeriod.last14:
         return _allSessions
             .where((s) => now.difference(s.date).inDays < 14)
@@ -1458,7 +1482,7 @@ class _InsightsScreenState extends State<InsightsScreen>
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     decoration: BoxDecoration(
                       color: selected ? SageColors.moss : SageColors.linen,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: SageRadius.round(8),
                       border: Border.all(
                           color: selected ? SageColors.moss : SageColors.line),
                     ),
@@ -1490,10 +1514,12 @@ class _InsightsScreenState extends State<InsightsScreen>
             )
           else ...[
             _statsGrid([
-              _StatItem('Meditation', '$medMin min', const Color(0xFF9B59B6)),
+              _StatItem('Meditation', '$medMin min',
+                  SageColors.legible(const Color(0xFF9B59B6))),
               _StatItem('Walking', '$walkMin min', SageColors.clay),
               _StatItem('Breathwork', '$breathMin min', SageColors.amber),
-              _StatItem('Sleep sounds', '$ssMin min', const Color(0xFF5D6D7E)),
+              _StatItem('Sleep sounds', '$ssMin min',
+                  SageColors.legible(const Color(0xFF5D6D7E))),
             ]),
             const SizedBox(height: 10),
             _insightRow(
@@ -1513,7 +1539,7 @@ class _InsightsScreenState extends State<InsightsScreen>
               Icon(Icons.all_inclusive_rounded,
                   size: 14, color: SageColors.inkSoft),
               const SizedBox(width: 6),
-              Text('ALL-TIME VITALS',
+              Text('All-time vitals',
                   style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
@@ -1522,6 +1548,14 @@ class _InsightsScreenState extends State<InsightsScreen>
             ],
           ),
           const SizedBox(height: 10),
+          if (_bandData.isEmpty) ...[
+            const BandOfflineNotice(
+              featureName: 'Insights',
+              compact: true,
+              whatWorks: 'Your sessions, sleep and check-ins are all here.',
+            ),
+            const SizedBox(height: 10),
+          ],
           _statsGrid([
             _StatItem(
                 'All-time sessions', '${_allSessions.length}', SageColors.moss),
@@ -1532,7 +1566,7 @@ class _InsightsScreenState extends State<InsightsScreen>
             _StatItem(
                 'Avg sleep quality',
                 avgSleep != null ? '${avgSleep.toStringAsFixed(1)}/5' : '—',
-                const Color(0xFF5D6D7E)),
+                SageColors.legible(const Color(0xFF5D6D7E))),
             _StatItem(
                 'Avg wellbeing',
                 avgWellbeing != null
@@ -1542,17 +1576,17 @@ class _InsightsScreenState extends State<InsightsScreen>
             _StatItem('BMI', '${_bmi.toStringAsFixed(1)} · $_bmiCategory',
                 SageColors.ink),
             _StatItem('Total steps', totalSteps > 0 ? '$totalSteps' : '—',
-                const Color(0xFF229954)),
+                SageColors.legible(const Color(0xFF229954))),
             _StatItem(
                 'Personal best walk',
                 bestSteps > 0 ? '$bestSteps steps' : '—',
-                const Color(0xFF1A7A44)),
+                SageColors.legible(const Color(0xFF1A7A44))),
           ]),
           if (bestSteps > 0 && bestWalk != null) ...[
             const SizedBox(height: 10),
             _insightRow(
               icon: Icons.emoji_events_outlined,
-              color: const Color(0xFF1A7A44),
+              color: SageColors.legible(const Color(0xFF1A7A44)),
               text: 'Personal best: $bestSteps steps on '
                   '${_shortDate(bestWalk.date)}. '
                   '${bestSteps >= 10000 ? 'That\'s a 10,000-step day — great work.' : bestSteps >= 7500 ? 'That\'s a strong walk.' : 'Every walk builds the habit.'}',
@@ -1583,12 +1617,12 @@ class _InsightsScreenState extends State<InsightsScreen>
     final loggedCount = entries.where((e) => e != null).length;
 
     return _card(
-      accent: const Color(0xFF5D6D7E),
+      accent: SageColors.legible(const Color(0xFF5D6D7E)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _sectionTitle('Sleep — last 7 nights', Icons.nightlight_round,
-              const Color(0xFF5D6D7E)),
+              SageColors.legible(const Color(0xFF5D6D7E))),
           const SizedBox(height: 16),
           if (loggedCount == 0)
             _emptyState(
@@ -1628,7 +1662,7 @@ class _InsightsScreenState extends State<InsightsScreen>
                             height: max(4.0, 36.0 * (quality / 5)),
                             decoration: BoxDecoration(
                               color: color,
-                              borderRadius: BorderRadius.circular(3),
+                              borderRadius: SageRadius.round(3),
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -1694,7 +1728,7 @@ class _InsightsScreenState extends State<InsightsScreen>
     return [
       _insightRow(
         icon: Icons.nightlight_round,
-        color: const Color(0xFF5D6D7E),
+        color: SageColors.legible(const Color(0xFF5D6D7E)),
         text: parts.join(' '),
       ),
     ];
@@ -1764,7 +1798,7 @@ class _InsightsScreenState extends State<InsightsScreen>
                             height: max(4.0, 36.0 * (score / 10)),
                             decoration: BoxDecoration(
                               color: color,
-                              borderRadius: BorderRadius.circular(3),
+                              borderRadius: SageRadius.round(3),
                             ),
                           ),
                           const SizedBox(height: 6),
@@ -1833,7 +1867,7 @@ class _InsightsScreenState extends State<InsightsScreen>
     final weekAgo = now.subtract(const Duration(days: 7));
     final weekFood =
         _foodEntries.where((f) => f.time.isAfter(weekAgo)).toList();
-    final daysWithFood = weekFood.map((f) => _dateKey(f.time)).toSet().length;
+    final daysWithFood = weekFood.map((f) => dayKey(f.time)).toSet().length;
     final loggedCalDays = weekFood.where((f) => f.calories != null).toList();
     final avgCalories = loggedCalDays.isNotEmpty
         ? (loggedCalDays.fold<int>(0, (s, f) => s + (f.calories ?? 0)) /
@@ -1877,7 +1911,7 @@ class _InsightsScreenState extends State<InsightsScreen>
           ),
           const SizedBox(height: 10),
           ClipRRect(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: SageRadius.round(4),
             child: LinearProgressIndicator(
               value: waterPct,
               minHeight: 8,
@@ -1998,7 +2032,7 @@ class _InsightsScreenState extends State<InsightsScreen>
                 decoration: BoxDecoration(
                   color: (flagged ? SageColors.clay : SageColors.moss)
                       .withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: SageRadius.round(12),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -2136,7 +2170,7 @@ class _InsightsScreenState extends State<InsightsScreen>
         final pp = goodPct - poorPct;
         rows.add(_insightRow(
           icon: Icons.bedtime_outlined,
-          color: const Color(0xFF5D6D7E),
+          color: SageColors.legible(const Color(0xFF5D6D7E)),
           text: pp.abs() > 5
               ? 'After a good night\'s sleep (4–5/5), you\'re active $goodPct% of '
                   'the next day — vs $poorPct% after a poor night (1–2/5), across '
@@ -2148,7 +2182,7 @@ class _InsightsScreenState extends State<InsightsScreen>
       } else if (link.goodNights + link.poorNights + link.okNights > 0) {
         rows.add(_insightRow(
           icon: Icons.bedtime_outlined,
-          color: const Color(0xFF5D6D7E),
+          color: SageColors.legible(const Color(0xFF5D6D7E)),
           text: 'You have ${link.goodNights + link.poorNights + link.okNights} '
               'night${(link.goodNights + link.poorNights + link.okNights) == 1 ? '' : 's'} '
               'of sleep logged with a "next day" to compare against, but not yet '
@@ -2191,12 +2225,12 @@ class _InsightsScreenState extends State<InsightsScreen>
     }
 
     return _card(
-      accent: const Color(0xFF2E9E6B),
+      accent: SageColors.legible(const Color(0xFF2E9E6B)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle(
-              'Connections', Icons.hub_outlined, const Color(0xFF2E9E6B)),
+          _sectionTitle('Connections', Icons.hub_outlined,
+              SageColors.legible(const Color(0xFF2E9E6B))),
           const SizedBox(height: 4),
           Text(
             'Everything Sage has on file, read together instead of in isolation.',
@@ -2239,8 +2273,8 @@ class _InsightsScreenState extends State<InsightsScreen>
     // Sleep — last night specifically, falling back to most recent entry.
     final lastSleep = _sleepEntries.isNotEmpty ? _sleepEntries.first : null;
     if (lastSleep != null) {
-      final isLastNight = _dateKey(lastSleep.date) ==
-          _dateKey(now.subtract(const Duration(days: 1)));
+      final isLastNight = dayKey(lastSleep.date) ==
+          dayKey(now.subtract(const Duration(days: 1)));
       final whenLabel =
           isLastNight ? 'Last night' : _relativeTime(lastSleep.date);
       final durationText = lastSleep.duration != null
@@ -2248,7 +2282,7 @@ class _InsightsScreenState extends State<InsightsScreen>
           : '';
       rows.add(_insightRow(
         icon: Icons.nightlight_round,
-        color: const Color(0xFF5D6D7E),
+        color: SageColors.legible(const Color(0xFF5D6D7E)),
         text: '$whenLabel you logged ${lastSleep.quality}/5 sleep quality'
             '$durationText${lastSleep.isNap ? ' (marked as a nap)' : ''}. '
             '${lastSleep.quality >= 4 ? 'That\'s a genuinely good night — it tends to show up in next-day energy.' : lastSleep.quality <= 2 ? 'That\'s rough — go easy on yourself today and consider an earlier wind-down tonight.' : 'A middling night — not bad, but there\'s room to improve the wind-down routine.'}',
@@ -2272,7 +2306,7 @@ class _InsightsScreenState extends State<InsightsScreen>
 
     // Food — today's entries.
     final foodToday =
-        _foodEntries.where((f) => _dateKey(f.time) == _dateKey(now)).toList();
+        _foodEntries.where((f) => dayKey(f.time) == dayKey(now)).toList();
     if (foodToday.isNotEmpty) {
       final withCal = foodToday.where((f) => f.calories != null).toList();
       final calTotal = withCal.fold<int>(0, (s, f) => s + (f.calories ?? 0));
@@ -2295,7 +2329,7 @@ class _InsightsScreenState extends State<InsightsScreen>
       final pct = (todayWater / waterTarget * 100).round();
       rows.add(_insightRow(
         icon: Icons.water_drop_outlined,
-        color: const Color(0xFF2E86C1),
+        color: SageColors.legible(const Color(0xFF2E86C1)),
         text: 'Today you\'ve had ${todayWater}ml of water — $pct% of your '
             '${waterTarget}ml target. '
             '${pct >= 100 ? 'Target met.' : pct >= 60 ? 'On pace, but not there yet.' : 'Well behind — worth catching up.'}',
@@ -2304,7 +2338,7 @@ class _InsightsScreenState extends State<InsightsScreen>
 
     // Sessions — today's, each one named.
     final sessionsToday =
-        _allSessions.where((s) => _dateKey(s.date) == _dateKey(now)).toList();
+        _allSessions.where((s) => dayKey(s.date) == dayKey(now)).toList();
     if (sessionsToday.isNotEmpty) {
       final byType = <String, int>{};
       for (final s in sessionsToday) {
@@ -2330,7 +2364,7 @@ class _InsightsScreenState extends State<InsightsScreen>
         final readings = _bella.getReadings(condition: cond);
         if (readings.isEmpty) continue;
         final latest = readings.first;
-        final isToday = _dateKey(latest.time) == _dateKey(now);
+        final isToday = dayKey(latest.time) == dayKey(now);
         if (!isToday) continue;
         final flagged = _isReadingFlagged(cond, latest);
         rows.add(_insightRow(
@@ -2359,7 +2393,7 @@ class _InsightsScreenState extends State<InsightsScreen>
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: SageRadius.round(12),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2416,7 +2450,7 @@ class _InsightsScreenState extends State<InsightsScreen>
                         height: max(4, 56 * heightFactor),
                         decoration: BoxDecoration(
                           color: count > 0 ? SageColors.moss : SageColors.line,
-                          borderRadius: BorderRadius.circular(4),
+                          borderRadius: SageRadius.round(4),
                         ),
                       ),
                     ),
@@ -2517,7 +2551,7 @@ class _InsightsScreenState extends State<InsightsScreen>
         body: 'You logged ${sleep.quality}/5 quality last night. Expect lower '
             'capacity today — this is a reasonable day to scale back '
             'intensity rather than push for a personal best.',
-        color: const Color(0xFF5D6D7E),
+        color: SageColors.legible(const Color(0xFF5D6D7E)),
       ));
     }
 
@@ -2555,14 +2589,14 @@ class _InsightsScreenState extends State<InsightsScreen>
         icon: Icons.self_improvement,
         title: 'Start meditating',
         body: 'Try a 5-minute session — consistency beats duration at first.',
-        color: const Color(0xFF9B59B6),
+        color: SageColors.legible(const Color(0xFF9B59B6)),
       ));
     } else if (medSessions.length >= 5 && medMin / medSessions.length < 10) {
       recs.add(_Rec(
         icon: Icons.self_improvement,
         title: 'Go a bit longer',
         body: 'Your average session is under 10 min — try extending to 15.',
-        color: const Color(0xFF9B59B6),
+        color: SageColors.legible(const Color(0xFF9B59B6)),
       ));
     }
 
@@ -2607,7 +2641,7 @@ class _InsightsScreenState extends State<InsightsScreen>
         icon: Icons.nightlight_round,
         title: 'Poor sleep trend',
         body: 'Try sleep sounds or the 4-7-8 breathing technique before bed.',
-        color: const Color(0xFF5D6D7E),
+        color: SageColors.legible(const Color(0xFF5D6D7E)),
       ));
     } else if (sleepThis != null &&
         sleepLast != null &&
@@ -2618,7 +2652,7 @@ class _InsightsScreenState extends State<InsightsScreen>
         body: 'Down from ${sleepLast.toStringAsFixed(1)} to '
             '${sleepThis.toStringAsFixed(1)}/5 this week — worth an earlier '
             'wind-down tonight.',
-        color: const Color(0xFF5D6D7E),
+        color: SageColors.legible(const Color(0xFF5D6D7E)),
       ));
     }
 
@@ -2634,7 +2668,7 @@ class _InsightsScreenState extends State<InsightsScreen>
         body: 'You\'re consistently more active the day after good sleep. '
             'Protecting tonight\'s sleep may matter more than tomorrow\'s '
             'willpower.',
-        color: const Color(0xFF5D6D7E),
+        color: SageColors.legible(const Color(0xFF5D6D7E)),
       ));
     }
 
@@ -2800,7 +2834,7 @@ class _InsightsScreenState extends State<InsightsScreen>
                       ),
                       const SizedBox(height: 4),
                       ClipRRect(
-                        borderRadius: BorderRadius.circular(3),
+                        borderRadius: SageRadius.round(3),
                         child: LinearProgressIndicator(
                           value: _achievements.isEmpty
                               ? 0
@@ -2825,23 +2859,21 @@ class _InsightsScreenState extends State<InsightsScreen>
           ),
           if (unlocked.isNotEmpty) ...[
             const SizedBox(height: 24),
-            Text('UNLOCKED',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.6,
-                    color: SageColors.inkSoft)),
+            const SectionHeader(title: 'Unlocked'),
             const SizedBox(height: 12),
             _achievementsGrid(unlocked, dimmed: false),
+          ] else ...[
+            const SizedBox(height: 16),
+            EmptyState.topic(
+              StateTopic.achievements,
+              art: SageArt.trophy,
+              accent: SageColors.amber,
+              compact: true,
+            ),
           ],
           if (locked.isNotEmpty) ...[
             const SizedBox(height: 24),
-            Text('IN PROGRESS',
-                style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.6,
-                    color: SageColors.inkSoft)),
+            const SectionHeader(title: 'On the way'),
             const SizedBox(height: 12),
             _achievementsGrid(locked, dimmed: true),
           ],
@@ -2889,22 +2921,17 @@ class _InsightsScreenState extends State<InsightsScreen>
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: SageColors.card,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(4),
-            topRight: Radius.circular(16),
-            bottomLeft: Radius.circular(16),
-            bottomRight: Radius.circular(16),
-          ),
+          borderRadius: SageRadius.notched(16),
           border: Border.all(
             color: a.isUnlocked
-                ? a.color.withValues(alpha: 0.35)
+                ? SageColors.legible(a.color).withValues(alpha: 0.35)
                 : SageColors.line,
             width: a.isUnlocked ? 1.5 : 1,
           ),
           boxShadow: a.isUnlocked
               ? [
                   BoxShadow(
-                    color: a.color.withValues(alpha: 0.10),
+                    color: SageColors.legible(a.color).withValues(alpha: 0.10),
                     blurRadius: 8,
                     offset: const Offset(0, 3),
                   )
@@ -2920,14 +2947,16 @@ class _InsightsScreenState extends State<InsightsScreen>
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: a.color.withValues(alpha: 0.14),
+                    color: SageColors.legible(a.color).withValues(alpha: 0.14),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(a.icon, size: 16, color: a.color),
+                  child: Icon(a.icon,
+                      size: 16, color: SageColors.legible(a.color)),
                 ),
                 const Spacer(),
                 if (a.isUnlocked)
-                  Icon(Icons.check_circle_rounded, size: 16, color: a.color),
+                  Icon(Icons.check_circle_rounded,
+                      size: 16, color: SageColors.legible(a.color)),
               ],
             ),
             const Spacer(),
@@ -2950,12 +2979,13 @@ class _InsightsScreenState extends State<InsightsScreen>
             ),
             const SizedBox(height: 8),
             ClipRRect(
-              borderRadius: BorderRadius.circular(3),
+              borderRadius: SageRadius.round(3),
               child: LinearProgressIndicator(
                 value: a.progress / 100,
                 minHeight: 4,
                 backgroundColor: SageColors.line,
-                valueColor: AlwaysStoppedAnimation<Color>(a.color),
+                valueColor:
+                    AlwaysStoppedAnimation<Color>(SageColors.legible(a.color)),
               ),
             ),
             const SizedBox(height: 4),
@@ -2965,7 +2995,9 @@ class _InsightsScreenState extends State<InsightsScreen>
                   : '${a.progress.round()}%',
               style: TextStyle(
                   fontSize: 10,
-                  color: a.isUnlocked ? a.color : SageColors.inkSoft,
+                  color: a.isUnlocked
+                      ? SageColors.legible(a.color)
+                      : SageColors.inkSoft,
                   fontWeight: a.isUnlocked ? FontWeight.w600 : FontWeight.w400),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
@@ -2989,15 +3021,10 @@ class _InsightsScreenState extends State<InsightsScreen>
       decoration: BoxDecoration(
         color: SageColors.card,
         border: Border.all(color: SageColors.line),
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(4),
-          topRight: Radius.circular(20),
-          bottomLeft: Radius.circular(20),
-          bottomRight: Radius.circular(20),
-        ),
+        borderRadius: SageRadius.notched(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: SageColors.shadow(0.03),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -3056,21 +3083,14 @@ class _InsightsScreenState extends State<InsightsScreen>
       {required IconData icon,
       required String title,
       required String subtitle}) {
-    return Column(
-      children: [
-        Icon(icon, size: 32, color: SageColors.line),
-        const SizedBox(height: 8),
-        Text(title,
-            style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: SageColors.inkSoft)),
-        const SizedBox(height: 4),
-        Text(subtitle,
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: SageColors.inkSoft)),
-      ],
-    );
+    final art = switch (icon) {
+      Icons.nightlight_round => SageArt.moon,
+      Icons.mood => SageArt.mood,
+      Icons.restaurant => SageArt.plate,
+      Icons.favorite_border => SageArt.heart,
+      _ => SageArt.chart,
+    };
+    return EmptyState(art: art, title: title, message: subtitle, compact: true);
   }
 
   Widget _statTile(
@@ -3083,7 +3103,7 @@ class _InsightsScreenState extends State<InsightsScreen>
       decoration: BoxDecoration(
         color: SageColors.linen,
         border: Border.all(color: SageColors.line),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: SageRadius.round(12),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3118,7 +3138,7 @@ class _InsightsScreenState extends State<InsightsScreen>
                 decoration: BoxDecoration(
                   color: SageColors.linen,
                   border: Border.all(color: SageColors.line),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: SageRadius.round(12),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -3240,7 +3260,8 @@ class _DonutPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     if (total == 0) {
-      paint.color = const Color(0xFFE9E6DA);
+      paint.color =
+          SageColors.isDark ? SageColors.line : const Color(0xFFE9E6DA);
       canvas.drawArc(rect.deflate(strokeWidth / 2), 0, 2 * pi, false, paint);
       return;
     }

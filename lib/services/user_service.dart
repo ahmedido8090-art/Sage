@@ -1,9 +1,13 @@
-// services/user_service.dart (Updated)
+// services/user_service.dart
+//
+// Accounts and the signed-in session. Credentials (password hashes) live in
+// the `users` box, profile data in `userDetails`, and the "keep me logged in"
+// marker in `session`.
 import 'package:hive/hive.dart';
 import '../models/user.dart';
+import 'password_hasher.dart';
 
 class UserService {
-  // Singleton pattern
   static final UserService _instance = UserService._internal();
   factory UserService() => _instance;
   UserService._internal();
@@ -11,63 +15,62 @@ class UserService {
   final Box _credentialsBox = Hive.box('users');
   final Box _userDetailsBox = Hive.box('userDetails');
   final Box _sessionBox = Hive.box('session');
-  
+
+  /// Username of the signed-in account, or null.
   String? currentUser;
   User? currentUserObject;
 
-  // Register new user - returns success message or error
-  String register(User user) {
+  static const String registrationSuccess = 'Registration successful!';
+
+  /// Registers [user] with [password]. Returns [registrationSuccess] or an
+  /// error message.
+  String register(User user, String password) {
     if (_credentialsBox.containsKey(user.username)) {
-      return "Username already exists";
+      return 'Username already exists';
     }
-    
-    _credentialsBox.put(user.username, user.password);
+    _credentialsBox.put(user.username, PasswordHasher.hash(password));
     _userDetailsBox.put(user.username, user.toMap());
-    
-    return "Registration successful!";
+    return registrationSuccess;
   }
 
-  // Authenticate user - returns error message or null if successful
+  /// Signs in. Returns an error message, or null on success.
   String? authenticate(String username, String password) {
-    final storedPassword = _credentialsBox.get(username);
-    
-    if (storedPassword == null) {
-      return "Username not found. Please sign up first.";
+    final stored = _credentialsBox.get(username);
+    if (stored is! String) return 'Username not found. Please sign up first.';
+    if (!PasswordHasher.verify(password, stored)) return 'Incorrect password';
+
+    // A legacy plaintext password is upgraded the first time it is used.
+    if (!PasswordHasher.isHashed(stored)) {
+      _credentialsBox.put(username, PasswordHasher.hash(password));
     }
-    
-    if (storedPassword != password) {
-      return "Incorrect password";
-    }
-    
-    final userMap = _userDetailsBox.get(username);
-    if (userMap != null && userMap is Map) {
-      currentUserObject = User.fromMap(Map<String, dynamic>.from(userMap));
-    } else {
-      currentUserObject = User(
-        username: username,
-        password: password,
-        age: 25,
-        gender: 'Not specified',
-        height: 170.0,
-        weight: 70.0,
-      );
-    }
-    
+
+    currentUserObject = getUserDetails(username) ??
+        User(
+          username: username,
+          age: 25,
+          gender: 'Not specified',
+          height: 170.0,
+          weight: 70.0,
+        );
     currentUser = username;
-    
     return null;
   }
 
-  // Get user details
+  /// Whether [password] is correct for [username]. Used to confirm a password
+  /// change.
+  bool verifyPassword(String username, String password) {
+    final stored = _credentialsBox.get(username);
+    return stored is String && PasswordHasher.verify(password, stored);
+  }
+
   User? getUserDetails(String username) {
     final userMap = _userDetailsBox.get(username);
-    if (userMap != null && userMap is Map) {
+    if (userMap is Map) {
       return User.fromMap(Map<String, dynamic>.from(userMap));
     }
     return null;
   }
 
-  // Update user details
   void updateUserDetails(String username, User updatedUser) {
     _userDetailsBox.put(username, updatedUser.toMap());
     if (currentUser == username) {
@@ -75,72 +78,60 @@ class UserService {
     }
   }
 
-  // Update password
   void updatePassword(String username, String newPassword) {
-    _credentialsBox.put(username, newPassword);
-    
-    // Update password in user details
-    final userMap = _userDetailsBox.get(username);
-    if (userMap != null && userMap is Map) {
-      final updatedMap = Map<String, dynamic>.from(userMap);
-      updatedMap['password'] = newPassword;
-      _userDetailsBox.put(username, updatedMap);
-      
-      if (currentUser == username && currentUserObject != null) {
-        currentUserObject = User.fromMap(updatedMap);
-      }
-    }
+    _credentialsBox.put(username, PasswordHasher.hash(newPassword));
   }
 
-  // Check if user exists
-  bool userExists(String username) {
-    return _credentialsBox.containsKey(username);
-  }
+  bool userExists(String username) => _credentialsBox.containsKey(username);
 
-  // Get all registered users (for debugging)
-  List<User> getAllUsers() {
-    final List<User> users = [];
-    for (final key in _userDetailsBox.keys) {
-      final userMap = _userDetailsBox.get(key);
-      if (userMap != null && userMap is Map) {
-        users.add(User.fromMap(Map<String, dynamic>.from(userMap)));
-      }
-    }
-    return users;
-  }
-
-  // Logout
   void logout() {
     currentUser = null;
     currentUserObject = null;
     clearPersistedSession();
   }
 
-  // --- "Keep me logged in" session persistence ---
+  // ── "Keep me logged in" ─────────────────────────────────────────────────
 
-  // Remembers this username across app restarts. Called from the login
-  // screen only when the "Keep me logged in" checkbox is checked.
+  /// Remembers this username across app restarts. Called from the login
+  /// screen only when "Keep me logged in" is checked.
   void persistSession(String username) {
     _sessionBox.put('rememberedUser', username);
   }
 
-  // Forgets any remembered session. Called when logging in with "Keep me
-  // logged in" unchecked, and on every explicit logout.
+  /// Forgets any remembered session. Called on login with "Keep me logged in"
+  /// unchecked and on every explicit logout.
   void clearPersistedSession() {
     _sessionBox.delete('rememberedUser');
   }
 
-  // Restores a remembered session (if any) into currentUser/currentUserObject.
-  // Call once at app startup, before deciding whether to show the login
-  // screen or jump straight to the dashboard.
+  /// Restores a remembered session, if any. Call once at startup, before
+  /// deciding between the login screen and the dashboard.
   Future<void> restoreSession() async {
     final remembered = _sessionBox.get('rememberedUser');
     if (remembered is! String) return;
-
-    final userMap = _userDetailsBox.get(remembered);
-    if (userMap != null && userMap is Map) {
-      currentUserObject = User.fromMap(Map<String, dynamic>.from(userMap));
+    final details = getUserDetails(remembered);
+    if (details != null) {
+      currentUserObject = details;
       currentUser = remembered;
+    }
+  }
+
+  /// One-time upgrade of accounts created before passwords were hashed:
+  /// hashes any plaintext credential and strips the password copy that used
+  /// to be stored inside the profile map. Safe to run on every start.
+  Future<void> migrateLegacyCredentials() async {
+    for (final key in _credentialsBox.keys.toList()) {
+      final stored = _credentialsBox.get(key);
+      if (stored is String && !PasswordHasher.isHashed(stored)) {
+        await _credentialsBox.put(key, PasswordHasher.hash(stored));
+      }
+    }
+    for (final key in _userDetailsBox.keys.toList()) {
+      final map = _userDetailsBox.get(key);
+      if (map is Map && map.containsKey('password')) {
+        final cleaned = Map<dynamic, dynamic>.from(map)..remove('password');
+        await _userDetailsBox.put(key, cleaned);
+      }
     }
   }
 }

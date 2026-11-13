@@ -4,6 +4,11 @@
 // delay parameter instead of two hand-rolled AnimationControllers — same
 // primitive, same tokens, just staggered by an explicit delay so the logo
 // settles before the form rises in underneath it.
+import '../widgets/sage_feedback.dart';
+import '../widgets/sage_button.dart';
+import '../theme/tokens.dart';
+import '../band/band_monitor.dart';
+import '../notifications/notification_service.dart';
 import 'package:material_ui/material_ui.dart';
 import '../services/user_service.dart';
 import '../theme/app_theme.dart';
@@ -61,14 +66,11 @@ class _LoginScreenState extends State<LoginScreen> {
             UserService().clearPersistedSession();
           }
 
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content:
-                  Text('Welcome back, ${_usernameController.text.trim()}!'),
-              backgroundColor: SageColors.moss,
-              duration: const Duration(seconds: 2),
-            ),
-          );
+          NotificationService.instance.refresh();
+          BandMonitor.instance.onUserChanged();
+
+          SageFeedback.success(
+              context, 'Welcome back, ${_usernameController.text.trim()}!');
 
           Navigator.pushReplacement(
             context,
@@ -76,13 +78,7 @@ class _LoginScreenState extends State<LoginScreen> {
           );
         } else {
           setState(() => _errorMessage = error);
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(error),
-              backgroundColor: SageColors.clay,
-              duration: const Duration(seconds: 3),
-            ),
-          );
+          SageFeedback.problem(context, error);
         }
       }
     }
@@ -102,23 +98,23 @@ class _LoginScreenState extends State<LoginScreen> {
       filled: true,
       fillColor: SageColors.card,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide.none,
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide(color: SageColors.line),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide(color: SageColors.moss, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide(color: SageColors.clay, width: 1),
       ),
       focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: SageRadius.round(14),
         borderSide: BorderSide(color: SageColors.clay, width: 1.5),
       ),
     );
@@ -182,7 +178,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                       decoration: BoxDecoration(
                                         color: SageColors.clay
                                             .withValues(alpha: 0.08),
-                                        borderRadius: BorderRadius.circular(12),
+                                        borderRadius: SageRadius.round(12),
                                         border: Border.all(
                                             color: SageColors.clay
                                                 .withValues(alpha: 0.3)),
@@ -293,41 +289,10 @@ class _LoginScreenState extends State<LoginScreen> {
 
                         const SizedBox(height: 18),
 
-                        SizedBox(
-                          height: 52,
-                          child: ElevatedButton(
-                            onPressed: _isLoading ? null : _handleLogin,
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: SageColors.moss,
-                              foregroundColor: SageColors.linen,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              elevation: 0,
-                            ),
-                            child: AnimatedSwitcher(
-                              duration: SageMotion.valueChange,
-                              child: _isLoading
-                                  ? SizedBox(
-                                      key: const ValueKey('loader'),
-                                      width: 22,
-                                      height: 22,
-                                      child: CircularProgressIndicator(
-                                        color: SageColors.linen,
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : const Text(
-                                      'LOG IN',
-                                      key: ValueKey('label'),
-                                      style: TextStyle(
-                                        fontSize: 14.5,
-                                        fontWeight: FontWeight.w600,
-                                        letterSpacing: 0.8,
-                                      ),
-                                    ),
-                            ),
-                          ),
+                        SageButton(
+                          label: 'Log in',
+                          loading: _isLoading,
+                          onPressed: _handleLogin,
                         ),
 
                         const SizedBox(height: 26),

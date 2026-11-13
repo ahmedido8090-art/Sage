@@ -66,4 +66,20 @@ class SageMotion {
   static const Duration routeSlideUp = Duration(milliseconds: 340);
   static const Duration routeSlideUpReverse = Duration(milliseconds: 280);
   static const Duration routeFade = Duration(milliseconds: 350);
+
+  // ── Delight (illustrations, success) ─────────────────────────────────────
+  // Small, slow, soft: a leaf that sways, a blob that breathes, a check that
+  // bounces in. All are single controllers wrapped in a RepaintBoundary, and
+  // all stand still when the system asks for reduced motion.
+  static const Duration swayPeriod = Duration(milliseconds: 4200);
+  static const Duration pulsePeriod = Duration(milliseconds: 2800);
+  static const Duration bounceDuration = Duration(milliseconds: 560);
+  static const Curve softCurve = Curves.easeInOutSine;
+  static const Curve bounceCurve = Curves.easeOutBack;
+
+  /// Sway amplitude of the leaf, in radians (about 4 degrees).
+  static const double swayAngle = 0.07;
+
+  /// How much a blob swells at the top of a pulse.
+  static const double pulseScale = 1.045;
 }

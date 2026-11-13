@@ -18,7 +18,8 @@ Route<T> slideUpRoute<T>(Widget page,
     transitionDuration: duration,
     reverseTransitionDuration: SageMotion.routeSlideUpReverse,
     pageBuilder: (_, __, ___) => page,
-    transitionsBuilder: (_, animation, __, child) {
+    transitionsBuilder: (context, animation, __, child) {
+      if (MediaQuery.disableAnimationsOf(context)) return child;
       final slide = Tween<Offset>(
         begin: Offset(0, SageMotion.riseSmall),
         end: Offset.zero,
@@ -44,7 +45,8 @@ Route<T> slideRightRoute<T>(Widget page,
     transitionDuration: duration,
     reverseTransitionDuration: const Duration(milliseconds: 260),
     pageBuilder: (_, __, ___) => page,
-    transitionsBuilder: (_, animation, __, child) {
+    transitionsBuilder: (context, animation, __, child) {
+      if (MediaQuery.disableAnimationsOf(context)) return child;
       final slide = Tween<Offset>(
         begin: const Offset(1.0, 0),
         end: Offset.zero,
@@ -61,7 +63,9 @@ Route<T> fadeRoute<T>(Widget page, {Duration duration = SageMotion.routeFade}) {
   return PageRouteBuilder<T>(
     transitionDuration: duration,
     pageBuilder: (_, __, ___) => page,
-    transitionsBuilder: (_, animation, __, child) =>
-        FadeTransition(opacity: animation, child: child),
+    transitionsBuilder: (context, animation, __, child) =>
+        MediaQuery.disableAnimationsOf(context)
+            ? child
+            : FadeTransition(opacity: animation, child: child),
   );
 }

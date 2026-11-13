@@ -1,10 +1,11 @@
 // widgets/wellness_activity_tile.dart
 import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
+import '../theme/tokens.dart';
+import 'pressable.dart';
 
-/// Activity card used in the dashboard's horizontal-scrolling
-/// "Wellness practices" row (Breathwork, Meditation, Walking, Sleep sounds).
-/// Replaces the old static 2x2 GridView tile pattern.
+/// Card in the dashboard's horizontally scrolling care row (PurePlate,
+/// ZZZify, Chronic Care, Daily check-in). The accent is a stripe on top.
 class WellnessActivityTile extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -23,42 +24,35 @@ class WellnessActivityTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return Pressable(
       onTap: onTap,
-      child: Container(
-        width: 124,
-        padding: const EdgeInsets.symmetric(
-            horizontal: 14, vertical: 8), // reduced vertical padding
-        decoration: BoxDecoration(
-          color: SageColors.card,
-          borderRadius: const BorderRadius.only(
-            topLeft: Radius.circular(4),
-            topRight: Radius.circular(14),
-            bottomLeft: Radius.circular(14),
-            bottomRight: Radius.circular(14),
+      semanticLabel: '$title, $subtitle',
+      child: ExcludeSemantics(
+        child: Container(
+          width: 132,
+          padding: const EdgeInsets.fromLTRB(
+              SageSpace.md + 2, SageSpace.md, SageSpace.md + 2, SageSpace.md),
+          decoration: BoxDecoration(
+            color: SageColors.card,
+            borderRadius: SageRadius.tile,
+            border: Border(top: BorderSide(color: accent, width: 3)),
           ),
-          border: Border(top: BorderSide(color: accent, width: 3)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, size: 20, color: accent),
-            const SizedBox(height: 12), // reduced from 22
-            Text(
-              title,
-              style:
-                  const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
-              overflow: TextOverflow.ellipsis, // prevent horizontal overflow
-              maxLines: 1,
-            ),
-            const SizedBox(height: 0), // removed extra gap (was 2)
-            Text(
-              subtitle,
-              style: TextStyle(fontSize: 11, color: SageColors.inkSoft),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ],
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 22, color: accent),
+              const Spacer(),
+              Text(title,
+                  style: SageText.label(),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis),
+              const SizedBox(height: 2),
+              Text(subtitle,
+                  style: SageText.caption(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
+            ],
+          ),
         ),
       ),
     );
