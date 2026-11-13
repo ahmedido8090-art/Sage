@@ -32,7 +32,9 @@
 // which read too ornate for the brand), Inter (all UI body text),
 // IBM Plex Mono (biometric numbers). Fraunces italic is kept only for
 // pull-quotes, where an editorial voice still fits.
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' as fm
+    show TextTheme; // ignore: deprecated_member_use
+import 'package:material_ui/material_ui.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -211,69 +213,69 @@ class SageColors {
 
   // ── Mutable palette fields (swapped on mode change) ───────────────────────
 
-  static Color moss      = _lightMoss;
+  static Color moss = _lightMoss;
   static Color mossLight = _lightMossLight;
-  static Color sage      = _lightSage;
-  static Color linen     = _lightLinen;
-  static Color card      = _lightCard;
-  static Color clay      = _lightClay;
-  static Color amber     = _lightAmber;
-  static Color ink       = _lightInk;
-  static Color inkSoft   = _lightInkSoft;
-  static Color line      = _lightLine;
+  static Color sage = _lightSage;
+  static Color linen = _lightLinen;
+  static Color card = _lightCard;
+  static Color clay = _lightClay;
+  static Color amber = _lightAmber;
+  static Color ink = _lightInk;
+  static Color inkSoft = _lightInkSoft;
+  static Color line = _lightLine;
 
-  static Color heroBg          = _lightHeroBg;
-  static Color heroNumber      = _heroNumber;
-  static Color heroLabel       = _heroLabel;
-  static Color heroLabelMuted  = _heroLabelMuted;
-  static Color heroSubLabel    = _heroSubLabel;
-  static Color heroLine        = _heroLine;
-  static Color heroAccentOk    = _heroAccentOk;
-  static Color heroAccentWarn  = _heroAccentWarn;
+  static Color heroBg = _lightHeroBg;
+  static Color heroNumber = _heroNumber;
+  static Color heroLabel = _heroLabel;
+  static Color heroLabelMuted = _heroLabelMuted;
+  static Color heroSubLabel = _heroSubLabel;
+  static Color heroLine = _heroLine;
+  static Color heroAccentOk = _heroAccentOk;
+  static Color heroAccentWarn = _heroAccentWarn;
 
   static bool get isDark => ThemeController.isDark.value;
 
   static void _useLight() {
-    moss      = _lightMoss;
+    moss = _lightMoss;
     mossLight = _lightMossLight;
-    sage      = _lightSage;
-    linen     = _lightLinen;
-    card      = _lightCard;
-    clay      = _lightClay;
-    amber     = _lightAmber;
-    ink       = _lightInk;
-    inkSoft   = _lightInkSoft;
-    line      = _lightLine;
-    heroBg    = _lightHeroBg;
+    sage = _lightSage;
+    linen = _lightLinen;
+    card = _lightCard;
+    clay = _lightClay;
+    amber = _lightAmber;
+    ink = _lightInk;
+    inkSoft = _lightInkSoft;
+    line = _lightLine;
+    heroBg = _lightHeroBg;
     // Hero foreground tokens are mode-invariant; reassigning them here
     // is a no-op but makes the symmetry with _useDark explicit.
-    heroNumber     = _heroNumber;
-    heroLabel      = _heroLabel;
+    heroNumber = _heroNumber;
+    heroLabel = _heroLabel;
     heroLabelMuted = _heroLabelMuted;
-    heroSubLabel   = _heroSubLabel;
-    heroLine       = _heroLine;
-    heroAccentOk   = _heroAccentOk;
+    heroSubLabel = _heroSubLabel;
+    heroLine = _heroLine;
+    heroAccentOk = _heroAccentOk;
     heroAccentWarn = _heroAccentWarn;
   }
 
   static void _useDark() {
-    moss      = _darkMoss;
+    moss = _darkMoss;
     mossLight = _darkMossLight;
-    sage      = _darkSage;
-    linen     = _darkLinen;
-    card      = _darkCard;
-    clay      = _darkClay;
-    amber     = _darkAmber;
-    ink       = _darkInk;
-    inkSoft   = _darkInkSoft;
-    line      = _darkLine;
-    heroBg    = _darkHeroBg;
-    heroNumber     = _heroNumber;
-    heroLabel      = _heroLabel;
+    sage = _darkSage;
+    linen = _darkLinen;
+    card = _darkCard;
+    clay = _darkClay;
+    amber = _darkAmber;
+    ink = _darkInk;
+    inkSoft = _darkInkSoft;
+    line = _darkLine;
+    heroBg = _darkHeroBg;
+    heroNumber = _heroNumber;
+    heroLabel = _heroLabel;
     heroLabelMuted = _heroLabelMuted;
-    heroSubLabel   = _heroSubLabel;
-    heroLine       = _heroLine;
-    heroAccentOk   = _heroAccentOk;
+    heroSubLabel = _heroSubLabel;
+    heroLine = _heroLine;
+    heroAccentOk = _heroAccentOk;
     heroAccentWarn = _heroAccentWarn;
   }
 }
@@ -350,36 +352,63 @@ class SageTheme {
       colorScheme: ColorScheme.fromSeed(
         seedColor: SageColors.moss,
         brightness: brightness,
-        primary:   SageColors.moss,
+        primary: SageColors.moss,
         secondary: SageColors.clay,
-        surface:   SageColors.card,
+        surface: SageColors.card,
       ),
       scaffoldBackgroundColor: SageColors.linen,
     );
 
-    final textTheme = GoogleFonts.interTextTheme(
-      isDark
-          ? base.textTheme.apply(
-              bodyColor:    SageColors.ink,
-              displayColor: SageColors.ink,
-            )
-          : base.textTheme,
+    // google_fonts builds a package:flutter TextTheme; copy its styles into
+    // the material_ui TextTheme that [ThemeData] expects.
+    final styled = GoogleFonts.interTextTheme(
+      fm.TextTheme(
+        displayLarge: base.textTheme.displayLarge,
+        displayMedium: base.textTheme.displayMedium,
+        displaySmall: base.textTheme.displaySmall,
+        headlineLarge: base.textTheme.headlineLarge,
+        headlineMedium: base.textTheme.headlineMedium,
+        headlineSmall: base.textTheme.headlineSmall,
+        titleLarge: base.textTheme.titleLarge,
+        titleMedium: base.textTheme.titleMedium,
+        titleSmall: base.textTheme.titleSmall,
+        bodyLarge: base.textTheme.bodyLarge,
+        bodyMedium: base.textTheme.bodyMedium,
+        bodySmall: base.textTheme.bodySmall,
+        labelLarge: base.textTheme.labelLarge,
+        labelMedium: base.textTheme.labelMedium,
+        labelSmall: base.textTheme.labelSmall,
+      ),
+    );
+    final textTheme = TextTheme(
+      displayLarge: styled.displayLarge,
+      displayMedium: styled.displayMedium,
+      displaySmall: styled.displaySmall,
+      headlineLarge: styled.headlineLarge,
+      headlineMedium: styled.headlineMedium,
+      headlineSmall: styled.headlineSmall,
+      titleLarge: styled.titleLarge,
+      titleMedium: styled.titleMedium,
+      titleSmall: styled.titleSmall,
+      bodyLarge: styled.bodyLarge,
+      bodyMedium: styled.bodyMedium,
+      bodySmall: styled.bodySmall,
+      labelLarge: styled.labelLarge,
+      labelMedium: styled.labelMedium,
+      labelSmall: styled.labelSmall,
     ).apply(
-      bodyColor:    SageColors.ink,
+      bodyColor: SageColors.ink,
       displayColor: SageColors.ink,
     );
 
     return base.copyWith(
       textTheme: textTheme,
-
       appBarTheme: const AppBarTheme(
-        backgroundColor:  Colors.transparent,
-        elevation:        0,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         surfaceTintColor: Colors.transparent,
       ),
-
       iconTheme: IconThemeData(color: SageColors.ink),
-
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: SageColors.moss,
@@ -389,7 +418,6 @@ class SageTheme {
           ),
         ),
       ),
-
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
           foregroundColor: SageColors.moss,
@@ -399,40 +427,37 @@ class SageTheme {
           ),
         ),
       ),
-
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: SageColors.moss,
         ),
       ),
-
       inputDecorationTheme: InputDecorationTheme(
-        filled:      true,
-        fillColor:   SageColors.card,
+        filled: true,
+        fillColor: SageColors.card,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide:   BorderSide(color: SageColors.line),
+          borderSide: BorderSide(color: SageColors.line),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide:   BorderSide(color: SageColors.line),
+          borderSide: BorderSide(color: SageColors.line),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide:   BorderSide(color: SageColors.moss, width: 1.5),
+          borderSide: BorderSide(color: SageColors.moss, width: 1.5),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide:   BorderSide(color: SageColors.clay, width: 1),
+          borderSide: BorderSide(color: SageColors.clay, width: 1),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide:   BorderSide(color: SageColors.clay, width: 1.5),
+          borderSide: BorderSide(color: SageColors.clay, width: 1.5),
         ),
         hintStyle: TextStyle(color: SageColors.inkSoft),
         labelStyle: TextStyle(color: SageColors.inkSoft),
       ),
-
       checkboxTheme: CheckboxThemeData(
         fillColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) return SageColors.moss;
@@ -442,7 +467,6 @@ class SageTheme {
         side: BorderSide(color: SageColors.line, width: 1.5),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
-
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) return SageColors.linen;
@@ -453,51 +477,43 @@ class SageTheme {
           return SageColors.line;
         }),
       ),
-
       sliderTheme: SliderThemeData(
-        activeTrackColor:   SageColors.moss,
+        activeTrackColor: SageColors.moss,
         inactiveTrackColor: SageColors.line,
-        thumbColor:         SageColors.moss,
-        overlayColor:       SageColors.moss.withValues(alpha: 0.12),
+        thumbColor: SageColors.moss,
+        overlayColor: SageColors.moss.withValues(alpha: 0.12),
       ),
-
-      tabBarTheme: 
-      TabBarThemeData(
-        indicatorColor:   SageColors.moss,
-        labelColor:       SageColors.moss,
+      tabBarTheme: TabBarThemeData(
+        indicatorColor: SageColors.moss,
+        labelColor: SageColors.moss,
         unselectedLabelColor: SageColors.inkSoft,
-        indicatorSize:    TabBarIndicatorSize.label,
+        indicatorSize: TabBarIndicatorSize.label,
       ),
-
       chipTheme: ChipThemeData(
-        backgroundColor:    SageColors.linen,
-        selectedColor:      SageColors.moss.withValues(alpha: 0.15),
-        labelStyle:         TextStyle(color: SageColors.ink),
-        side:               BorderSide(color: SageColors.line),
+        backgroundColor: SageColors.linen,
+        selectedColor: SageColors.moss.withValues(alpha: 0.15),
+        labelStyle: TextStyle(color: SageColors.ink),
+        side: BorderSide(color: SageColors.line),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
-
       dividerTheme: DividerThemeData(
-        color:     SageColors.line,
+        color: SageColors.line,
         thickness: 0.5,
-        space:     0,
+        space: 0,
       ),
-
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor:  SageColors.linen,
-        indicatorColor:   SageColors.moss.withValues(alpha: 0.15),
-        labelTextStyle:   WidgetStateProperty.all(
+        backgroundColor: SageColors.linen,
+        indicatorColor: SageColors.moss.withValues(alpha: 0.15),
+        labelTextStyle: WidgetStateProperty.all(
           TextStyle(fontSize: 11, color: SageColors.inkSoft),
         ),
       ),
-
       bottomSheetTheme: BottomSheetThemeData(
-        backgroundColor:  SageColors.card,
+        backgroundColor: SageColors.card,
         shape: const RoundedRectangleBorder(
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
       ),
-
       snackBarTheme: SnackBarThemeData(
         backgroundColor: isDark ? SageColors.card : SageColors.ink,
         contentTextStyle: TextStyle(
@@ -506,12 +522,11 @@ class SageTheme {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         behavior: SnackBarBehavior.floating,
       ),
-
-      cardColor:    SageColors.card,
+      cardColor: SageColors.card,
       dividerColor: SageColors.line,
     );
   }
 
   static ThemeData get light => _build(brightness: Brightness.light);
-  static ThemeData get dark  => _build(brightness: Brightness.dark);
+  static ThemeData get dark => _build(brightness: Brightness.dark);
 }

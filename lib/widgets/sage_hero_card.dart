@@ -5,7 +5,7 @@
 // AnimatedContainer/AnimatedOpacity timings — previously these were four
 // different inline numbers (300/400/700/350ms) with no relationship to
 // each other or to the rest of the app.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
 import 'pulse_wave_painter.dart';
@@ -133,7 +133,8 @@ class SageHeroCard extends StatelessWidget {
               child: Text(
                 subLabel,
                 key: ValueKey(subLabel),
-                style: TextStyle(fontSize: 12.5, color: SageColors.heroSubLabel),
+                style:
+                    TextStyle(fontSize: 12.5, color: SageColors.heroSubLabel),
               ),
             ),
             const SizedBox(height: 10),

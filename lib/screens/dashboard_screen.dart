@@ -14,7 +14,7 @@
 // so Flutter handles the crossfade automatically with no await and no
 // blocking. The AnimationController is removed entirely.
 import 'dart:io';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../models/health_data.dart';
 import '../services/wellness_quote_service.dart';
 import '../services/wellness_score_service.dart';
@@ -195,8 +195,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   List<String> _flaggedConditionsToday() {
-    final conditions =
-        UserService().currentUserObject?.chronicDiseases ?? [];
+    final conditions = UserService().currentUserObject?.chronicDiseases ?? [];
     final flagged = <String>[];
     for (final cond in conditions) {
       final readings = _bella.getReadings(condition: cond);
@@ -209,8 +208,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   String _chronicCareSubtitle() {
-    final conditions =
-        UserService().currentUserObject?.chronicDiseases ?? [];
+    final conditions = UserService().currentUserObject?.chronicDiseases ?? [];
     if (conditions.isEmpty) return 'Log & manage';
 
     int stalestDays = 0;
@@ -587,9 +585,7 @@ class _DevicePickerSheetState extends State<_DevicePickerSheet> {
                     final dev = devices[i];
                     return ListTile(
                       leading: Icon(
-                        dev.isBle
-                            ? Icons.bluetooth
-                            : Icons.bluetooth_searching,
+                        dev.isBle ? Icons.bluetooth : Icons.bluetooth_searching,
                         color: SageColors.moss,
                       ),
                       title:

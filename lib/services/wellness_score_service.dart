@@ -16,7 +16,7 @@
 // Both screens now call `WellnessScoreService.compute(...)`. There is
 // exactly one formula, one set of chronic-flag thresholds, and one set of
 // label/color breakpoints. If this needs to change, change it here once.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../models/bella_data.dart';
 import 'bella_service.dart';
@@ -115,7 +115,8 @@ class WellnessScoreService {
         .where((c) => c.time.isBefore(dayEnd))
         .toList()
       ..sort((a, b) => b.time.compareTo(a.time));
-    final checkinAsOf = checkinsUpToDate.isEmpty ? null : checkinsUpToDate.first;
+    final checkinAsOf =
+        checkinsUpToDate.isEmpty ? null : checkinsUpToDate.first;
     final checkinAge =
         checkinAsOf != null ? date.difference(checkinAsOf.time).inHours : 999;
     final checkinScore = (checkinAge <= 36 && checkinAsOf != null)

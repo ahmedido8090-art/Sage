@@ -6,7 +6,7 @@
 // repeat() would run at that wrong speed for one cycle before the next
 // didUpdateWidget corrected it — causing a visible lurch the moment
 // the band connected.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class PulseWavePainter extends CustomPainter {
   final Color color;
@@ -139,8 +139,7 @@ class _PulseWaveState extends State<PulseWave>
   @override
   void initState() {
     super.initState();
-    _controller =
-        AnimationController(vsync: this, duration: _cycleDuration());
+    _controller = AnimationController(vsync: this, duration: _cycleDuration());
     _syncAnimationState();
   }
 

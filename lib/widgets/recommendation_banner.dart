@@ -1,5 +1,5 @@
 // widgets/recommendation_banner.dart
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 
 /// Single, most-relevant recommendation — replaces the old
@@ -48,9 +48,13 @@ class RecommendationBanner extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+                  Text(title,
+                      style: const TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600)),
                   const SizedBox(height: 2),
-                  Text(subtitle, style: TextStyle(fontSize: 12, color: SageColors.inkSoft)),
+                  Text(subtitle,
+                      style:
+                          TextStyle(fontSize: 12, color: SageColors.inkSoft)),
                 ],
               ),
             ),

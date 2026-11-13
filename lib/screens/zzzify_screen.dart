@@ -1,5 +1,5 @@
 // screens/zzzify_screen.dart
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../services/bella_service.dart';
 import '../services/user_service.dart';
@@ -1335,75 +1335,76 @@ class _ZZZifyScreenState extends State<ZZZifyScreen>
           ],
         ),
       ),
-      body: Reveal(size: RevealSize.large,
+      body: Reveal(
+        size: RevealSize.large,
         child: TabBarView(
-        controller: _tabController,
-        children: [
-          // ════════════════════════════════════════════════════════════════
-          // TAB 1 — LOG SLEEP
-          // ════════════════════════════════════════════════════════════════
-          SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _card(child: _buildLogForm()),
-              ],
-            ),
-          ),
-
-          // ════════════════════════════════════════════════════════════════
-          // TAB 2 — ANALYTICS
-          // ════════════════════════════════════════════════════════════════
-          SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // ── Period picker ─────────────────────────────────────────
-                _buildPeriodRow(),
-                const SizedBox(height: 16),
-
-                // ── Sleep score summary ───────────────────────────────────
-                _buildScoreCard(score, report),
-                const SizedBox(height: 16),
-
-                // ── Graph section ─────────────────────────────────────────
-                _buildGraphSection(filteredGraph, graphEntries),
-                const SizedBox(height: 16),
-
-                // ── Entry list ────────────────────────────────────────────
-                if (periodEntries.isNotEmpty) _buildEntryList(periodEntries),
-                const SizedBox(height: 16),
-
-                // ── Today's session insights ──────────────────────────────
-                if (todaySessions.isNotEmpty)
-                  _buildTodayInsightCard(
-                      todaySessions, todayInsights, totalTodayMin),
-
-                // ── Detailed report ───────────────────────────────────────
-                const SizedBox(height: 16),
-                _buildDetailedReport(report),
-
-                // ── Factors affecting tonight ─────────────────────────────
-                if (factors.isNotEmpty) ...[
-                  const SizedBox(height: 20),
-                  _buildSectionLabel('WHAT MAY AFFECT YOUR SLEEP'),
-                  const SizedBox(height: 10),
-                  _buildFactorsCard(factors),
+          controller: _tabController,
+          children: [
+            // ════════════════════════════════════════════════════════════════
+            // TAB 1 — LOG SLEEP
+            // ════════════════════════════════════════════════════════════════
+            SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _card(child: _buildLogForm()),
                 ],
-
-                // ── Wind-down correlation insight ─────────────────────────
-                if (showWindDownInsight) ...[
-                  const SizedBox(height: 12),
-                  _buildWindDownInsight(avgWDGood, avgWDBad),
-                ],
-
-                const SizedBox(height: 8),
-              ],
+              ),
             ),
-          ),
-        ],
+
+            // ════════════════════════════════════════════════════════════════
+            // TAB 2 — ANALYTICS
+            // ════════════════════════════════════════════════════════════════
+            SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // ── Period picker ─────────────────────────────────────────
+                  _buildPeriodRow(),
+                  const SizedBox(height: 16),
+
+                  // ── Sleep score summary ───────────────────────────────────
+                  _buildScoreCard(score, report),
+                  const SizedBox(height: 16),
+
+                  // ── Graph section ─────────────────────────────────────────
+                  _buildGraphSection(filteredGraph, graphEntries),
+                  const SizedBox(height: 16),
+
+                  // ── Entry list ────────────────────────────────────────────
+                  if (periodEntries.isNotEmpty) _buildEntryList(periodEntries),
+                  const SizedBox(height: 16),
+
+                  // ── Today's session insights ──────────────────────────────
+                  if (todaySessions.isNotEmpty)
+                    _buildTodayInsightCard(
+                        todaySessions, todayInsights, totalTodayMin),
+
+                  // ── Detailed report ───────────────────────────────────────
+                  const SizedBox(height: 16),
+                  _buildDetailedReport(report),
+
+                  // ── Factors affecting tonight ─────────────────────────────
+                  if (factors.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    _buildSectionLabel('WHAT MAY AFFECT YOUR SLEEP'),
+                    const SizedBox(height: 10),
+                    _buildFactorsCard(factors),
+                  ],
+
+                  // ── Wind-down correlation insight ─────────────────────────
+                  if (showWindDownInsight) ...[
+                    const SizedBox(height: 12),
+                    _buildWindDownInsight(avgWDGood, avgWDBad),
+                  ],
+
+                  const SizedBox(height: 8),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );

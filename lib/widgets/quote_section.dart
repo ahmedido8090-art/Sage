@@ -1,5 +1,5 @@
 // widgets/quote_section.dart
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 
 /// Editorial quote treatment — a hairline rule and italic Fraunces serif,

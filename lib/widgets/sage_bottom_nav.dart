@@ -1,5 +1,5 @@
 // widgets/sage_bottom_nav.dart
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 
 class _SageNavItem {
@@ -46,7 +46,8 @@ class SageBottomNav extends StatelessWidget {
               onTap: () => onTap(i),
               borderRadius: BorderRadius.circular(12),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [

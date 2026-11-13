@@ -12,7 +12,7 @@
 // Two sizes only — pass [size] to pick which. Don't introduce a third
 // size or hand-roll a custom duration; if neither size fits, that's a
 // signal to reconsider the design rather than add a one-off number.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/scheduler.dart';
 import '../theme/motion.dart';
 

@@ -3,7 +3,7 @@
 // Branded launch screen. Animates in on startup, holds for a moment,
 // then replaces itself with either DashboardScreen or LoginScreen
 // depending on whether a persisted session exists.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../services/user_service.dart';
 import 'dashboard_screen.dart';
@@ -198,7 +198,9 @@ class _SplashScreenState extends State<SplashScreen>
               position: _wordmarkSlide,
               child: FadeTransition(
                 opacity: _wordmarkOpacity,
-                child: Text('Sage', style: SageText.wordmark(color: SageColors.moss).copyWith(fontSize: 36)),
+                child: Text('Sage',
+                    style: SageText.wordmark(color: SageColors.moss)
+                        .copyWith(fontSize: 36)),
               ),
             ),
 

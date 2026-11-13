@@ -9,7 +9,7 @@
 // (_AnimatedArc, _AnimatedScoreRing), which animate a numeric fill rather
 // than an entrance and so don't fit the Reveal/Pressable/Stagger model.
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'dart:math' as math;
 import '../models/bella_data.dart';
 import '../services/bluetooth_service.dart';
@@ -87,7 +87,8 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
   int _overallScore = 0;
 
   int get _totalActivityMinutesToday =>
-      _meditationMinutesToday + _walkingMinutesToday +
+      _meditationMinutesToday +
+      _walkingMinutesToday +
       _breathworkSessionsToday * 5 + // approx 5 min per breathwork session
       _sleepSoundsMinutesToday;
 
@@ -367,10 +368,12 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
       }
       return 'No meals logged today. Tracking nutrition helps Sage give you better insights.';
     }
-    if (_overallScore >= 80)
+    if (_overallScore >= 80) {
       return 'You\'re thriving — keep up the healthy habits!';
-    if (_overallScore >= 60)
+    }
+    if (_overallScore >= 60) {
       return 'Good momentum. Focus on your lowest pillar to level up.';
+    }
     return 'Start by completing a check-in or a short session — small steps build the picture.';
   }
 
@@ -401,16 +404,17 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
       return '$_multiActivityStreak days combining practices — keep the streak alive.';
     }
     if (_overallScore >= 80) return 'You\'re thriving. Keep the momentum.';
-    if (_overallScore >= 60)
+    if (_overallScore >= 60) {
       return 'Good progress. Focus on your lowest pillar.';
-    if (_overallScore > 0)
+    }
+    if (_overallScore > 0) {
       return 'Start anywhere. Small steps build the picture.';
+    }
     return 'Breathe, move, and rest well.';
   }
 
   void _go(Widget screen) {
-    Navigator.push(context, slideUpRoute(screen))
-        .then((_) {
+    Navigator.push(context, slideUpRoute(screen)).then((_) {
       if (!mounted) return;
       setState(() {
         _loadBellaData();
@@ -587,9 +591,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
                   '$_heartRate',
                   key: ValueKey(_heartRate),
                   style: SageText.mono(
-                      size: 13,
-                      weight: FontWeight.w700,
-                      color: SageColors.ink),
+                      size: 13, weight: FontWeight.w700, color: SageColors.ink),
                 ),
               ),
               Text(
@@ -783,8 +785,7 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
             index: i,
             child: Container(
               margin: const EdgeInsets.only(right: 10),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: color.withValues(alpha: 0.08),
                 borderRadius: BorderRadius.circular(14),
@@ -828,26 +829,31 @@ class _WellnessScreenState extends State<WellnessScreen> with RouteAware {
     final c = _lastCheckin;
     final checkinFresh =
         c != null && DateTime.now().difference(c.time).inHours <= 24;
-    final highStress = checkinFresh && c!.stress >= 4;
-    final lowEnergy = checkinFresh && c!.energy <= 2;
-    final lowMood = checkinFresh && c!.mood <= 2;
+    final highStress = checkinFresh && c.stress >= 4;
+    final lowEnergy = checkinFresh && c.energy <= 2;
+    final lowMood = checkinFresh && c.mood <= 2;
     final highSleep = _avgSleepQuality != null && _avgSleepQuality! < 2.5;
 
     String breathSubtitle = 'Guided breathing';
-    if (highStress) breathSubtitle = 'Stress is high \u2014 start here';
-    else if (lowEnergy) breathSubtitle = 'Low energy \u2014 reset with breath';
+    if (highStress) {
+      breathSubtitle = 'Stress is high \u2014 start here';
+    } else if (lowEnergy)
+      breathSubtitle = 'Low energy \u2014 reset with breath';
 
     String medSubtitle = 'Guided sessions';
-    if (lowMood) medSubtitle = 'Mood is low \u2014 a session can help';
-    else if (highStress) medSubtitle = 'Calm your mind';
+    if (lowMood) {
+      medSubtitle = 'Mood is low \u2014 a session can help';
+    } else if (highStress) medSubtitle = 'Calm your mind';
 
     String walkSubtitle = 'Track your activity';
-    if (lowEnergy && !highStress) walkSubtitle = 'Gentle movement boosts energy';
-    else if (lowMood) walkSubtitle = 'Movement lifts mood';
+    if (lowEnergy && !highStress) {
+      walkSubtitle = 'Gentle movement boosts energy';
+    } else if (lowMood) walkSubtitle = 'Movement lifts mood';
 
     String relaxSubtitle = 'Relax and rest';
-    if (highSleep) relaxSubtitle = 'Sleep has been rough \u2014 wind down';
-    else if (highStress) relaxSubtitle = 'Decompress before bed';
+    if (highSleep) {
+      relaxSubtitle = 'Sleep has been rough \u2014 wind down';
+    } else if (highStress) relaxSubtitle = 'Decompress before bed';
 
     final cards = [
       _PracticeCardData(
@@ -1093,8 +1099,7 @@ class _PracticeCard extends StatelessWidget {
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                Icon(Icons.check,
-                                    color: data.accent, size: 10),
+                                Icon(Icons.check, color: data.accent, size: 10),
                                 const SizedBox(width: 3),
                                 Text(
                                   'Done',
@@ -1401,8 +1406,8 @@ class _AnimatedArcState extends State<_AnimatedArc>
   void didUpdateWidget(covariant _AnimatedArc oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.progress != widget.progress) {
-      _anim = Tween<double>(begin: _anim.value, end: widget.progress).animate(
-          CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+      _anim = Tween<double>(begin: _anim.value, end: widget.progress)
+          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
       _ctrl
         ..reset()
         ..forward();
@@ -1515,8 +1520,7 @@ class _AnimatedScoreRingState extends State<_AnimatedScoreRing>
     super.didUpdateWidget(oldWidget);
     if (oldWidget.score != widget.score) {
       _anim = Tween<double>(begin: _anim.value, end: widget.score.toDouble())
-          .animate(
-              CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
+          .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeOutCubic));
       _ctrl
         ..reset()
         ..forward();

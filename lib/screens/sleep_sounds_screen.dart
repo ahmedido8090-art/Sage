@@ -21,8 +21,7 @@
 // Dependencies: audioplayers (already in pubspec), everything else from app.
 
 import 'dart:async';
-import 'package:flutter/material.dart';
-import 'package:audioplayers/audioplayers.dart';
+import 'package:material_ui/material_ui.dart';
 import '../services/bella_service.dart';
 import '../services/user_service.dart';
 import '../services/sleep_sounds_player_service.dart';
@@ -405,39 +404,39 @@ class _SleepSoundsScreenState extends State<SleepSoundsScreen>
           child: Reveal(
             size: RevealSize.large,
             child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Recommendation chip
-              if (_recommendedSound != null) _buildRecommendationChip(),
-              const SizedBox(height: 16),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Recommendation chip
+                if (_recommendedSound != null) _buildRecommendationChip(),
+                const SizedBox(height: 16),
 
-              // Section label
-              _sectionLabel('SOUNDS'),
-              const SizedBox(height: 12),
-
-              // Sound picker — horizontal scroll
-              _buildSoundPicker(),
-              const SizedBox(height: 24),
-
-              // Mixer (only when 2 sounds active)
-              if (_slotSound[0] != null && _slotSound[1] != null) ...[
-                _sectionLabel('MIXER'),
+                // Section label
+                _sectionLabel('SOUNDS'),
                 const SizedBox(height: 12),
-                _buildMixer(),
+
+                // Sound picker — horizontal scroll
+                _buildSoundPicker(),
                 const SizedBox(height: 24),
+
+                // Mixer (only when 2 sounds active)
+                if (_slotSound[0] != null && _slotSound[1] != null) ...[
+                  _sectionLabel('MIXER'),
+                  const SizedBox(height: 12),
+                  _buildMixer(),
+                  const SizedBox(height: 24),
+                ],
+
+                // Sleep timer
+                _sectionLabel('SLEEP TIMER'),
+                const SizedBox(height: 10),
+                _buildTimerPills(),
+                const SizedBox(height: 28),
+
+                // Tips
+                _sectionLabel('WIND-DOWN TIPS'),
+                const SizedBox(height: 12),
+                _buildTipsCard(),
               ],
-
-              // Sleep timer
-              _sectionLabel('SLEEP TIMER'),
-              const SizedBox(height: 10),
-              _buildTimerPills(),
-              const SizedBox(height: 28),
-
-              // Tips
-              _sectionLabel('WIND-DOWN TIPS'),
-              const SizedBox(height: 12),
-              _buildTipsCard(),
-            ],
             ),
           ),
         ),

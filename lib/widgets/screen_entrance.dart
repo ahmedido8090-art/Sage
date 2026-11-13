@@ -18,7 +18,7 @@
 // Usage:
 //   body: ScreenEntrance(child: TabBarView(...)),
 //   body: ScreenEntrance(child: SingleChildScrollView(...)),
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/scheduler.dart';
 
 class ScreenEntrance extends StatefulWidget {

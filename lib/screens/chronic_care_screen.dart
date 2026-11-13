@@ -1,5 +1,5 @@
 // screens/chronic_care_screen.dart
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../services/bella_service.dart';
 import '../services/user_service.dart';

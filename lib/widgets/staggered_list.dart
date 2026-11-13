@@ -9,7 +9,7 @@
 // re-fire mid-session. Now the timer is created once and never again
 // (guarded by _started).
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/scheduler.dart';
 
 class StaggeredItem extends StatefulWidget {

@@ -27,26 +27,31 @@ class ChronicConditions {
 class User {
   // @HiveField(0)
   final String username;
-  
+
   // @HiveField(1)
   final String password;
-  
+
   // @HiveField(2)
   final int age;
-  
+
   // @HiveField(3)
   final String gender;
-  
+
   // @HiveField(4)
   final double height;
-  
+
   // @HiveField(5)
   final double weight;
 
   // @HiveField(6)
   /// Conditions picked from [ChronicConditions.options]. Empty means "None".
   final List<String> chronicDiseases;
-  
+
+  /// Daily targets used by the nutrition screens.
+  final int dailyStepGoal;
+  final int waterGoal;
+  final int caloriesGoal;
+
   User({
     required this.username,
     required this.password,
@@ -55,8 +60,20 @@ class User {
     required this.height,
     required this.weight,
     this.chronicDiseases = const [],
+    this.dailyStepGoal = 8000,
+    this.waterGoal = 2500,
+    this.caloriesGoal = 2000,
   });
-  
+
+  /// Body mass index from [height] (cm) and [weight] (kg); 0 if height unset.
+  double get bmi {
+    if (height <= 0) return 0;
+    final meters = height / 100;
+    return weight / (meters * meters);
+  }
+
+  bool hasChronicDisease(String name) => chronicDiseases.contains(name);
+
   // Convert to Map for Hive storage
   Map<String, dynamic> toMap() {
     return {
@@ -67,9 +84,12 @@ class User {
       'height': height,
       'weight': weight,
       'chronicDiseases': chronicDiseases,
+      'dailyStepGoal': dailyStepGoal,
+      'waterGoal': waterGoal,
+      'caloriesGoal': caloriesGoal,
     };
   }
-  
+
   // Create User from Map
   factory User.fromMap(Map<String, dynamic> map) {
     return User(
@@ -83,6 +103,9 @@ class User {
               ?.map((e) => e.toString())
               .toList() ??
           const [],
+      dailyStepGoal: map['dailyStepGoal'] ?? 8000,
+      waterGoal: map['waterGoal'] ?? 2500,
+      caloriesGoal: map['caloriesGoal'] ?? 2000,
     );
   }
 }

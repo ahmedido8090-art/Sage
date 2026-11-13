@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class BellaColors {
   static const Color background = Color(0xFF0F0F17);
@@ -139,7 +139,7 @@ class BellaTheme {
       ),
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: BellaColors.surface,
-        indicatorColor: BellaColors.primary.withOpacity(0.18),
+        indicatorColor: BellaColors.primary.withValues(alpha: 0.18),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           final selected = states.contains(WidgetState.selected);
           return TextStyle(

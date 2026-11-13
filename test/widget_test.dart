@@ -1,30 +1,27 @@
-// This is a basic Flutter widget test.
-//
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
-
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-
-import 'package:sage/main.dart';
+import 'package:sage/models/user.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const SageApp());
+  User user({List<String> diseases = const []}) => User(
+        username: 'sage',
+        password: 'pw',
+        age: 30,
+        gender: 'F',
+        height: 170,
+        weight: 70,
+        chronicDiseases: diseases,
+      );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+  test('User computes BMI from height and weight', () {
+    expect(user().bmi, closeTo(24.22, 0.01));
+  });
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
-
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('User round-trips goals and conditions through a map', () {
+    final restored = User.fromMap(user(diseases: ['Asthma']).toMap());
+    expect(restored.hasChronicDisease('Asthma'), isTrue);
+    expect(restored.hasChronicDisease('Diabetes'), isFalse);
+    expect(restored.waterGoal, 2500);
+    expect(restored.caloriesGoal, 2000);
+    expect(restored.dailyStepGoal, 8000);
   });
 }

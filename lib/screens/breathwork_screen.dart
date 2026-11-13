@@ -2,7 +2,7 @@
 
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import 'package:audioplayers/audioplayers.dart';
 import '../services/bluetooth_service.dart';
@@ -742,12 +742,15 @@ class _BreathworkScreenState extends State<BreathworkScreen>
 
   String _calmInsight() {
     final change = _initialHeartRate - _currentHeartRate;
-    if (change > 10)
+    if (change > 10) {
       return 'Heart rate dropped $change bpm — your nervous system responded well.';
-    if (change > 4)
+    }
+    if (change > 4) {
       return 'A $change bpm reduction shows your body is learning to regulate.';
-    if (change >= 0)
+    }
+    if (change >= 0) {
       return 'Your heart rate held steady. Consistency builds the response over time.';
+    }
     return 'Heart rate rose slightly — try a longer exhale in your next session.';
   }
 
@@ -773,8 +776,9 @@ class _BreathworkScreenState extends State<BreathworkScreen>
     final name = (_currentStep['name'] as String).toLowerCase();
     final base = _selectedTechnique?.color ?? SageColors.moss;
     if (name.contains('in')) return base;
-    if (name.contains('out') || name == 'exhale')
+    if (name.contains('out') || name == 'exhale') {
       return base.withValues(alpha: 0.55);
+    }
     return SageColors.inkSoft;
   }
 

@@ -23,7 +23,7 @@
 //   • No separate persistence layer. Progress is always computed live from
 //     Bella so it can never drift out of sync.
 //   • Achievements are immutable value objects; the service is stateless.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'bella_service.dart';
 import 'user_service.dart';
 import '../models/bella_data.dart';
@@ -102,14 +102,14 @@ class AchievementsService {
     final int checkinCount = _bella.getCheckins().length;
     final int totalActiveSessions = sessions.length;
     final int hydratedDays = _hydratedDayCount();
-    final int calmingMinutes = totalMedMinutes + breathwork.fold(
-        0, (s, e) => s + e.durationMinutes);
+    final int calmingMinutes =
+        totalMedMinutes + breathwork.fold(0, (s, e) => s + e.durationMinutes);
 
     // Steps (walking sessions carry their step count in `detail`, e.g.
     // '8421' — only present on sessions logged after this field was added,
     // so older sessions without it simply contribute 0 rather than crash).
-    final int totalSteps = walking.fold(
-        0, (s, e) => s + (int.tryParse(e.detail ?? '') ?? 0));
+    final int totalSteps =
+        walking.fold(0, (s, e) => s + (int.tryParse(e.detail ?? '') ?? 0));
 
     // Technique diversity (breathwork sessions carry the technique name in
     // `detail`, e.g. 'Box Breathing' — same caveat: only present going
@@ -130,11 +130,10 @@ class AchievementsService {
 
     // Tiered/ultimate stats
     final double? avgSleepLong = _bella.averageSleepQuality(days: 30);
-    final int loggedSleepNights = _bella.getSleepEntries()
-        .where((e) => !e.isNap)
-        .length;
-    final username = UserService().currentUserObject?.username ??
-        UserService().currentUser;
+    final int loggedSleepNights =
+        _bella.getSleepEntries().where((e) => !e.isNap).length;
+    final username =
+        UserService().currentUserObject?.username ?? UserService().currentUser;
     final bool isWellRounded = totalMedMinutes >= 60 &&
         totalWalkMinutes >= 60 &&
         breathworkCount >= 10 &&
@@ -151,11 +150,12 @@ class AchievementsService {
     final double legendProgress = ((longestStreak / 30).clamp(0.0, 1.0) +
             (totalActiveSessions / 100).clamp(0.0, 1.0) +
             ([
-              totalMedMinutes / 60,
-              totalWalkMinutes / 60,
-              breathworkCount / 10,
-              sleepSoundsCount / 10,
-            ].map((v) => v.clamp(0.0, 1.0)).reduce((a, b) => a + b) / 4) +
+                  totalMedMinutes / 60,
+                  totalWalkMinutes / 60,
+                  breathworkCount / 10,
+                  sleepSoundsCount / 10,
+                ].map((v) => v.clamp(0.0, 1.0)).reduce((a, b) => a + b) /
+                4) +
             (((avgSleepLong ?? 0) / 4.0)).clamp(0.0, 1.0) +
             (checkinCount / 20).clamp(0.0, 1.0) +
             (hydratedDays / 14).clamp(0.0, 1.0)) /
@@ -462,8 +462,8 @@ class AchievementsService {
         icon: Icons.nightlight_round,
         color: const Color(0xFF1B2631),
         progress: ((loggedSleepNights / 30).clamp(0.0, 1.0) * 0.5 +
-                    ((avgSleepLong ?? 0) / 4.5).clamp(0.0, 1.0) * 0.5) *
-                100,
+                ((avgSleepLong ?? 0) / 4.5).clamp(0.0, 1.0) * 0.5) *
+            100,
         isUnlocked: loggedSleepNights >= 30 && (avgSleepLong ?? 0) >= 4.5,
       ),
       _make(
@@ -492,11 +492,13 @@ class AchievementsService {
         icon: Icons.auto_awesome,
         color: const Color(0xFF117864),
         progress: ([
-          totalMedMinutes / 60,
-          totalWalkMinutes / 60,
-          breathworkCount / 10,
-          sleepSoundsCount / 10,
-        ].map((v) => v.clamp(0.0, 1.0)).reduce((a, b) => a + b) / 4 * 100),
+              totalMedMinutes / 60,
+              totalWalkMinutes / 60,
+              breathworkCount / 10,
+              sleepSoundsCount / 10,
+            ].map((v) => v.clamp(0.0, 1.0)).reduce((a, b) => a + b) /
+            4 *
+            100),
         isUnlocked: isWellRounded,
       ),
 

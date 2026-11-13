@@ -1,5 +1,5 @@
 // screens/pure_plate_screen.dart
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../services/bella_service.dart';
 import '../services/user_service.dart';
@@ -1639,7 +1639,8 @@ class _PurePlateScreenState extends State<PurePlateScreen>
           ],
         ),
       ),
-      body: Reveal(size: RevealSize.large,
+      body: Reveal(
+        size: RevealSize.large,
         child: TabBarView(
           controller: _tabController,
           children: [

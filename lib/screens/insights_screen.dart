@@ -33,7 +33,7 @@
 //   • Achievements tab
 
 import 'dart:math';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:flutter/services.dart';
 import '../services/data_storage_service.dart';
 import '../services/user_service.dart';
@@ -104,8 +104,18 @@ class _InsightsScreenState extends State<InsightsScreen>
 
   String _formatFullDate(DateTime d) {
     const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December'
     ];
     final hour12 = d.hour % 12 == 0 ? 12 : d.hour % 12;
     final minute = d.minute.toString().padLeft(2, '0');
@@ -150,15 +160,21 @@ class _InsightsScreenState extends State<InsightsScreen>
     }
 
     buf.writeln('— ACTIVITY TOTALS (all-time) —');
-    for (final type in ['meditation', 'walking', 'breathwork', 'sleep_sounds']) {
+    for (final type in [
+      'meditation',
+      'walking',
+      'breathwork',
+      'sleep_sounds'
+    ]) {
       final sessions = _byType(type);
       if (sessions.isEmpty) continue;
-      buf.writeln('  ${type == 'sleep_sounds' ? 'Sleep sounds' : type[0].toUpperCase() + type.substring(1)}: '
+      buf.writeln(
+          '  ${type == 'sleep_sounds' ? 'Sleep sounds' : type[0].toUpperCase() + type.substring(1)}: '
           '${sessions.length} sessions, ${_minutesOf(sessions)} minutes');
     }
     // Steps: parsed from walking session detail field
-    final totalStepsReport = _byType('walking').fold<int>(
-        0, (s, e) => s + (int.tryParse(e.detail ?? '') ?? 0));
+    final totalStepsReport = _byType('walking')
+        .fold<int>(0, (s, e) => s + (int.tryParse(e.detail ?? '') ?? 0));
     if (totalStepsReport > 0) {
       buf.writeln('  Total steps logged: $totalStepsReport');
     }
@@ -169,10 +185,13 @@ class _InsightsScreenState extends State<InsightsScreen>
     final avgSleep = _bella.averageSleepQuality();
     final avgWellbeing = _bella.averageWellbeing();
     buf.writeln('— VITALS —');
-    buf.writeln('  Avg sleep quality (7d): ${avgSleep?.toStringAsFixed(1) ?? '—'}/5');
-    buf.writeln('  Avg wellbeing (7d): ${avgWellbeing?.toStringAsFixed(1) ?? '—'}/10');
+    buf.writeln(
+        '  Avg sleep quality (7d): ${avgSleep?.toStringAsFixed(1) ?? '—'}/5');
+    buf.writeln(
+        '  Avg wellbeing (7d): ${avgWellbeing?.toStringAsFixed(1) ?? '—'}/10');
     final avgHr = _avgHeartRate;
-    buf.writeln('  Avg heart rate (14d): ${avgHr != null ? '$avgHr bpm' : '—'}');
+    buf.writeln(
+        '  Avg heart rate (14d): ${avgHr != null ? '$avgHr bpm' : '—'}');
     buf.writeln('  BMI: ${_bmi.toStringAsFixed(1)} ($_bmiCategory)');
     buf.writeln();
 
@@ -276,8 +295,8 @@ class _InsightsScreenState extends State<InsightsScreen>
                       icon: Icon(Icons.copy_outlined,
                           size: 16, color: SageColors.moss),
                       label: Text('Copy',
-                          style: TextStyle(
-                              fontSize: 13, color: SageColors.moss)),
+                          style:
+                              TextStyle(fontSize: 13, color: SageColors.moss)),
                     ),
                   ],
                 ),
@@ -400,8 +419,18 @@ class _InsightsScreenState extends State<InsightsScreen>
 
   String _shortDate(DateTime d) {
     const months = [
-      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec'
     ];
     return '${months[d.month - 1]} ${d.day}';
   }
@@ -467,26 +496,35 @@ class _InsightsScreenState extends State<InsightsScreen>
 
   // ── Cross-metric helpers (used by Correlations card + Recommendations) ───
 
-  double? _avgSleepInWindow({required int daysAgoStart, required int daysAgoEnd}) {
+  double? _avgSleepInWindow(
+      {required int daysAgoStart, required int daysAgoEnd}) {
     final now = DateTime.now();
     final start = now.subtract(Duration(days: daysAgoStart));
     final end = now.subtract(Duration(days: daysAgoEnd));
     final entries = _sleepEntries
-        .where((e) => !e.isNap && e.date.isAfter(end) && e.date.isBefore(start.add(const Duration(days: 1))))
+        .where((e) =>
+            !e.isNap &&
+            e.date.isAfter(end) &&
+            e.date.isBefore(start.add(const Duration(days: 1))))
         .toList();
     if (entries.isEmpty) return null;
-    return entries.map((e) => e.quality).reduce((a, b) => a + b) / entries.length;
+    return entries.map((e) => e.quality).reduce((a, b) => a + b) /
+        entries.length;
   }
 
-  double? _avgWellbeingInWindow({required int daysAgoStart, required int daysAgoEnd}) {
+  double? _avgWellbeingInWindow(
+      {required int daysAgoStart, required int daysAgoEnd}) {
     final now = DateTime.now();
     final start = now.subtract(Duration(days: daysAgoStart));
     final end = now.subtract(Duration(days: daysAgoEnd));
     final entries = _checkins
-        .where((c) => c.time.isAfter(end) && c.time.isBefore(start.add(const Duration(days: 1))))
+        .where((c) =>
+            c.time.isAfter(end) &&
+            c.time.isBefore(start.add(const Duration(days: 1))))
         .toList();
     if (entries.isEmpty) return null;
-    return entries.map((c) => c.wellbeingScore).reduce((a, b) => a + b) / entries.length;
+    return entries.map((c) => c.wellbeingScore).reduce((a, b) => a + b) /
+        entries.length;
   }
 
   /// Does a good night's sleep actually predict whether the user shows up
@@ -767,8 +805,8 @@ class _InsightsScreenState extends State<InsightsScreen>
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerRight,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 10, vertical: 5),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       color: Colors.white.withValues(alpha: 0.14),
                       borderRadius: BorderRadius.circular(20),
@@ -862,7 +900,9 @@ class _InsightsScreenState extends State<InsightsScreen>
         children: [
           Icon(icon, size: 11, color: c),
           const SizedBox(width: 2),
-          Text(text, style: TextStyle(fontSize: 11, color: c, fontWeight: FontWeight.w600)),
+          Text(text,
+              style: TextStyle(
+                  fontSize: 11, color: c, fontWeight: FontWeight.w600)),
         ],
       ),
     );
@@ -876,7 +916,7 @@ class _InsightsScreenState extends State<InsightsScreen>
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        '$label $score · ${weightPct}%',
+        '$label $score · $weightPct%',
         style: TextStyle(fontSize: 10, color: SageColors.heroLabelMuted),
       ),
     );
@@ -918,8 +958,8 @@ class _InsightsScreenState extends State<InsightsScreen>
   Widget _buildTrendStrip() {
     final now = DateTime.now();
     final windowDays = _trendDays;
-    final days =
-        List.generate(windowDays, (i) => now.subtract(Duration(days: windowDays - 1 - i)));
+    final days = List.generate(
+        windowDays, (i) => now.subtract(Duration(days: windowDays - 1 - i)));
     final counts = days.map((d) {
       final key = _dateKey(d);
       return _allSessions.where((s) => _dateKey(s.date) == key).length;
@@ -987,7 +1027,9 @@ class _InsightsScreenState extends State<InsightsScreen>
                             height: h,
                             decoration: BoxDecoration(
                               color: c > 0
-                                  ? (isToday ? SageColors.amber : SageColors.moss)
+                                  ? (isToday
+                                      ? SageColors.amber
+                                      : SageColors.moss)
                                   : SageColors.line,
                               borderRadius: BorderRadius.circular(3),
                             ),
@@ -1223,7 +1265,8 @@ class _InsightsScreenState extends State<InsightsScreen>
         Expanded(
             child: Text(label,
                 style: TextStyle(fontSize: 12, color: SageColors.ink))),
-        Text('$count', style: SageText.mono(size: 12, color: SageColors.inkSoft)),
+        Text('$count',
+            style: SageText.mono(size: 12, color: SageColors.inkSoft)),
         const SizedBox(width: 6),
         SizedBox(
           width: 48,
@@ -1333,12 +1376,18 @@ class _InsightsScreenState extends State<InsightsScreen>
     final now = DateTime.now();
     switch (p) {
       case _TotalsPeriod.today:
-        return _allSessions.where((s) => _dateKey(s.date) == _dateKey(now)).toList();
+        return _allSessions
+            .where((s) => _dateKey(s.date) == _dateKey(now))
+            .toList();
       case _TotalsPeriod.yesterday:
         final y = now.subtract(const Duration(days: 1));
-        return _allSessions.where((s) => _dateKey(s.date) == _dateKey(y)).toList();
+        return _allSessions
+            .where((s) => _dateKey(s.date) == _dateKey(y))
+            .toList();
       case _TotalsPeriod.last14:
-        return _allSessions.where((s) => now.difference(s.date).inDays < 14).toList();
+        return _allSessions
+            .where((s) => now.difference(s.date).inDays < 14)
+            .toList();
     }
   }
 
@@ -1355,10 +1404,14 @@ class _InsightsScreenState extends State<InsightsScreen>
 
   Widget _buildTotalsGrid() {
     final periodSessions = _sessionsForPeriod(_totalsPeriod);
-    final medMin = _minutesOf(periodSessions.where((s) => s.type == 'meditation').toList());
-    final walkMin = _minutesOf(periodSessions.where((s) => s.type == 'walking').toList());
-    final breathMin = _minutesOf(periodSessions.where((s) => s.type == 'breathwork').toList());
-    final ssMin = _minutesOf(periodSessions.where((s) => s.type == 'sleep_sounds').toList());
+    final medMin = _minutesOf(
+        periodSessions.where((s) => s.type == 'meditation').toList());
+    final walkMin =
+        _minutesOf(periodSessions.where((s) => s.type == 'walking').toList());
+    final breathMin = _minutesOf(
+        periodSessions.where((s) => s.type == 'breathwork').toList());
+    final ssMin = _minutesOf(
+        periodSessions.where((s) => s.type == 'sleep_sounds').toList());
     final avgHr = _avgHeartRate;
     final avgSleep = _bella.averageSleepQuality();
     final avgWellbeing = _bella.averageWellbeing();
@@ -1429,7 +1482,8 @@ class _InsightsScreenState extends State<InsightsScreen>
           if (periodSessions.isEmpty)
             _emptyState(
               icon: Icons.event_busy_rounded,
-              title: 'Nothing logged ${_periodLabel(_totalsPeriod).toLowerCase()}',
+              title:
+                  'Nothing logged ${_periodLabel(_totalsPeriod).toLowerCase()}',
               subtitle: _totalsPeriod == _TotalsPeriod.today
                   ? 'Complete any activity today and it\'ll show up here immediately.'
                   : 'No sessions fall in this window yet.',
@@ -1456,7 +1510,8 @@ class _InsightsScreenState extends State<InsightsScreen>
           const SizedBox(height: 14),
           Row(
             children: [
-              Icon(Icons.all_inclusive_rounded, size: 14, color: SageColors.inkSoft),
+              Icon(Icons.all_inclusive_rounded,
+                  size: 14, color: SageColors.inkSoft),
               const SizedBox(width: 6),
               Text('ALL-TIME VITALS',
                   style: TextStyle(
@@ -1468,10 +1523,10 @@ class _InsightsScreenState extends State<InsightsScreen>
           ),
           const SizedBox(height: 10),
           _statsGrid([
-            _StatItem('All-time sessions', '${_allSessions.length}',
-                SageColors.moss),
-            _StatItem('Longest streak', '$_longestStreak days',
-                SageColors.clay),
+            _StatItem(
+                'All-time sessions', '${_allSessions.length}', SageColors.moss),
+            _StatItem(
+                'Longest streak', '$_longestStreak days', SageColors.clay),
             _StatItem('Avg heart rate', avgHr != null ? '$avgHr bpm' : '—',
                 SageColors.moss),
             _StatItem(
@@ -1484,12 +1539,9 @@ class _InsightsScreenState extends State<InsightsScreen>
                     ? '${avgWellbeing.toStringAsFixed(1)}/10'
                     : '—',
                 SageColors.amber),
-            _StatItem(
-                'BMI', '${_bmi.toStringAsFixed(1)} · $_bmiCategory',
+            _StatItem('BMI', '${_bmi.toStringAsFixed(1)} · $_bmiCategory',
                 SageColors.ink),
-            _StatItem(
-                'Total steps',
-                totalSteps > 0 ? '$totalSteps' : '—',
+            _StatItem('Total steps', totalSteps > 0 ? '$totalSteps' : '—',
                 const Color(0xFF229954)),
             _StatItem(
                 'Personal best walk',
@@ -1611,10 +1663,10 @@ class _InsightsScreenState extends State<InsightsScreen>
 
     final avg = logged.map((e) => e.key.quality).reduce((a, b) => a + b) /
         logged.length;
-    final best = logged.reduce(
-        (a, b) => a.key.quality >= b.key.quality ? a : b);
-    final worst = logged.reduce(
-        (a, b) => a.key.quality <= b.key.quality ? a : b);
+    final best =
+        logged.reduce((a, b) => a.key.quality >= b.key.quality ? a : b);
+    final worst =
+        logged.reduce((a, b) => a.key.quality <= b.key.quality ? a : b);
     final missing = 7 - logged.length;
     final napCount = logged.where((e) => e.key.isNap).length;
     const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -1632,7 +1684,8 @@ class _InsightsScreenState extends State<InsightsScreen>
       parts.add('$napCount of those were logged as naps, not full nights.');
     }
     if (avg >= 4) {
-      parts.add('That\'s a strong week for sleep — keep whatever you\'re doing.');
+      parts.add(
+          'That\'s a strong week for sleep — keep whatever you\'re doing.');
     } else if (avg < 2.5) {
       parts.add('That\'s a tough stretch — consider sleep sounds or an '
           'earlier wind-down a few nights this week.');
@@ -1669,8 +1722,8 @@ class _InsightsScreenState extends State<InsightsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle('Mood & check-ins — last 7 days', Icons.mood,
-              SageColors.amber),
+          _sectionTitle(
+              'Mood & check-ins — last 7 days', Icons.mood, SageColors.amber),
           const SizedBox(height: 16),
           if (loggedCount == 0)
             _emptyState(
@@ -1778,10 +1831,10 @@ class _InsightsScreenState extends State<InsightsScreen>
   Widget _buildNutritionHydration() {
     final now = DateTime.now();
     final weekAgo = now.subtract(const Duration(days: 7));
-    final weekFood = _foodEntries.where((f) => f.time.isAfter(weekAgo)).toList();
+    final weekFood =
+        _foodEntries.where((f) => f.time.isAfter(weekAgo)).toList();
     final daysWithFood = weekFood.map((f) => _dateKey(f.time)).toSet().length;
-    final loggedCalDays =
-        weekFood.where((f) => f.calories != null).toList();
+    final loggedCalDays = weekFood.where((f) => f.calories != null).toList();
     final avgCalories = loggedCalDays.isNotEmpty
         ? (loggedCalDays.fold<int>(0, (s, f) => s + (f.calories ?? 0)) /
                 daysWithFood.clamp(1, 7))
@@ -1815,7 +1868,8 @@ class _InsightsScreenState extends State<InsightsScreen>
                 child: _statTile(
                   label: 'Meals logged (7d)',
                   value: '${weekFood.length}',
-                  unit: 'across $daysWithFood day${daysWithFood == 1 ? '' : 's'}',
+                  unit:
+                      'across $daysWithFood day${daysWithFood == 1 ? '' : 's'}',
                   color: SageColors.moss,
                 ),
               ),
@@ -1879,8 +1933,7 @@ class _InsightsScreenState extends State<InsightsScreen>
               '(activity level, goals) matters here.');
         }
       }
-      final highSodium =
-          weekFood.where((f) => f.tag == 'high-sodium').length;
+      final highSodium = weekFood.where((f) => f.tag == 'high-sodium').length;
       final highCarb = weekFood.where((f) => f.tag == 'high-carb').length;
       if (highSodium > 0) {
         parts.add('$highSodium item${highSodium == 1 ? '' : 's'} tagged '
@@ -1930,8 +1983,7 @@ class _InsightsScreenState extends State<InsightsScreen>
           ...conditions.map((cond) {
             final readings = _bella.getReadings(condition: cond);
             final latest = readings.isNotEmpty ? readings.first : null;
-            final flagged =
-                latest != null && _isReadingFlagged(cond, latest);
+            final flagged = latest != null && _isReadingFlagged(cond, latest);
             // Trend: same condition + same reading type, oldest-to-newest,
             // so blood pressure and blood glucose (say) don't get mixed
             // into one meaningless line if a condition has more than one
@@ -1988,7 +2040,8 @@ class _InsightsScreenState extends State<InsightsScreen>
                             height: 28,
                             child: _Sparkline(
                               values: trend.map((r) => r.value).toList(),
-                              color: flagged ? SageColors.clay : SageColors.moss,
+                              color:
+                                  flagged ? SageColors.clay : SageColors.moss,
                             ),
                           ),
                       ],
@@ -1998,7 +2051,9 @@ class _InsightsScreenState extends State<InsightsScreen>
                       Text(
                         _readingTrendComment(cond, trend),
                         style: TextStyle(
-                            fontSize: 11, color: SageColors.inkSoft, height: 1.3),
+                            fontSize: 11,
+                            color: SageColors.inkSoft,
+                            height: 1.3),
                       ),
                     ],
                   ],
@@ -2107,9 +2162,12 @@ class _InsightsScreenState extends State<InsightsScreen>
       final delta = sleepThis - sleepLast;
       if (delta.abs() >= 0.3) {
         rows.add(_insightRow(
-          icon: delta > 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+          icon: delta > 0
+              ? Icons.trending_up_rounded
+              : Icons.trending_down_rounded,
           color: delta > 0 ? SageColors.moss : SageColors.clay,
-          text: 'Sleep quality is averaging ${sleepThis.toStringAsFixed(1)}/5 this '
+          text:
+              'Sleep quality is averaging ${sleepThis.toStringAsFixed(1)}/5 this '
               'week vs ${sleepLast.toStringAsFixed(1)}/5 last week '
               '(${delta > 0 ? '+' : ''}${delta.toStringAsFixed(1)}).',
         ));
@@ -2120,9 +2178,12 @@ class _InsightsScreenState extends State<InsightsScreen>
       final delta = moodThis - moodLast;
       if (delta.abs() >= 0.6) {
         rows.add(_insightRow(
-          icon: delta > 0 ? Icons.trending_up_rounded : Icons.trending_down_rounded,
+          icon: delta > 0
+              ? Icons.trending_up_rounded
+              : Icons.trending_down_rounded,
           color: delta > 0 ? SageColors.moss : SageColors.clay,
-          text: 'Check-in wellbeing is averaging ${moodThis.toStringAsFixed(1)}/10 '
+          text:
+              'Check-in wellbeing is averaging ${moodThis.toStringAsFixed(1)}/10 '
               'this week vs ${moodLast.toStringAsFixed(1)}/10 last week '
               '(${delta > 0 ? '+' : ''}${delta.toStringAsFixed(1)}).',
         ));
@@ -2134,7 +2195,8 @@ class _InsightsScreenState extends State<InsightsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _sectionTitle('Connections', Icons.hub_outlined, const Color(0xFF2E9E6B)),
+          _sectionTitle(
+              'Connections', Icons.hub_outlined, const Color(0xFF2E9E6B)),
           const SizedBox(height: 4),
           Text(
             'Everything Sage has on file, read together instead of in isolation.',
@@ -2179,9 +2241,8 @@ class _InsightsScreenState extends State<InsightsScreen>
     if (lastSleep != null) {
       final isLastNight = _dateKey(lastSleep.date) ==
           _dateKey(now.subtract(const Duration(days: 1)));
-      final whenLabel = isLastNight
-          ? 'Last night'
-          : _relativeTime(lastSleep.date);
+      final whenLabel =
+          isLastNight ? 'Last night' : _relativeTime(lastSleep.date);
       final durationText = lastSleep.duration != null
           ? ', ${lastSleep.duration!.inHours}h ${lastSleep.duration!.inMinutes % 60}m'
           : '';
@@ -2210,9 +2271,8 @@ class _InsightsScreenState extends State<InsightsScreen>
     }
 
     // Food — today's entries.
-    final foodToday = _foodEntries
-        .where((f) => _dateKey(f.time) == _dateKey(now))
-        .toList();
+    final foodToday =
+        _foodEntries.where((f) => _dateKey(f.time) == _dateKey(now)).toList();
     if (foodToday.isNotEmpty) {
       final withCal = foodToday.where((f) => f.calories != null).toList();
       final calTotal = withCal.fold<int>(0, (s, f) => s + (f.calories ?? 0));
@@ -2220,7 +2280,8 @@ class _InsightsScreenState extends State<InsightsScreen>
       rows.add(_insightRow(
         icon: Icons.restaurant_outlined,
         color: SageColors.clay,
-        text: 'Today you logged ${foodToday.length} food entr${foodToday.length == 1 ? 'y' : 'ies'}'
+        text:
+            'Today you logged ${foodToday.length} food entr${foodToday.length == 1 ? 'y' : 'ies'}'
             '${withCal.isNotEmpty ? ' totaling ~$calTotal kcal' : ''}'
             '${tags.contains('high-sodium') ? ' — including something tagged high-sodium' : ''}'
             '${tags.contains('high-carb') ? ' — including something tagged high-carb' : ''}.',
@@ -2250,7 +2311,8 @@ class _InsightsScreenState extends State<InsightsScreen>
         byType[s.type] = (byType[s.type] ?? 0) + s.durationMinutes;
       }
       final parts = byType.entries
-          .map((e) => '${e.value} min ${e.key == 'sleep_sounds' ? 'sleep sounds' : e.key}')
+          .map((e) =>
+              '${e.value} min ${e.key == 'sleep_sounds' ? 'sleep sounds' : e.key}')
           .join(', ');
       rows.add(_insightRow(
         icon: Icons.bolt_rounded,
@@ -2272,7 +2334,9 @@ class _InsightsScreenState extends State<InsightsScreen>
         if (!isToday) continue;
         final flagged = _isReadingFlagged(cond, latest);
         rows.add(_insightRow(
-          icon: flagged ? Icons.warning_amber_rounded : Icons.check_circle_outline,
+          icon: flagged
+              ? Icons.warning_amber_rounded
+              : Icons.check_circle_outline,
           color: flagged ? SageColors.clay : SageColors.moss,
           text: 'Today you logged a $cond reading: ${latest.type} '
               '${latest.value.toStringAsFixed(0)}'
@@ -2359,7 +2423,8 @@ class _InsightsScreenState extends State<InsightsScreen>
                   ),
                   const SizedBox(height: 6),
                   Text(day,
-                      style: TextStyle(fontSize: 10, color: SageColors.inkSoft)),
+                      style:
+                          TextStyle(fontSize: 10, color: SageColors.inkSoft)),
                 ],
               );
             }).toList(),
@@ -2377,14 +2442,14 @@ class _InsightsScreenState extends State<InsightsScreen>
   List<_Rec> _stateBasedRecs() {
     final out = <_Rec>[];
     final checkin = _bella.lastCheckin;
-    final checkinFresh =
-        checkin != null && DateTime.now().difference(checkin.time).inHours <= 24;
+    final checkinFresh = checkin != null &&
+        DateTime.now().difference(checkin.time).inHours <= 24;
     final sleep = _bella.lastNightSleep;
-    final sleepFresh = sleep != null &&
-        DateTime.now().difference(sleep.date).inDays <= 1;
+    final sleepFresh =
+        sleep != null && DateTime.now().difference(sleep.date).inDays <= 1;
 
     if (checkinFresh) {
-      final c = checkin!;
+      final c = checkin;
       if (c.stress >= 4 && c.energy <= 2) {
         out.add(_Rec(
           icon: Icons.air,
@@ -2417,7 +2482,8 @@ class _InsightsScreenState extends State<InsightsScreen>
         out.add(_Rec(
           icon: Icons.wb_sunny_outlined,
           title: 'You\'re in a good place today',
-          body: 'Mood ${c.mood}/5, energy ${c.energy}/5, stress ${c.stress}/5 — '
+          body:
+              'Mood ${c.mood}/5, energy ${c.energy}/5, stress ${c.stress}/5 — '
               'this is a good day to take on something slightly harder than '
               'usual, like a longer walk or a new technique.',
           color: SageColors.moss,
@@ -2444,7 +2510,7 @@ class _InsightsScreenState extends State<InsightsScreen>
       ));
     }
 
-    if (sleepFresh && sleep!.quality <= 2) {
+    if (sleepFresh && sleep.quality <= 2) {
       out.add(_Rec(
         icon: Icons.nightlight_round,
         title: 'Running on a bad night\'s sleep',
@@ -2578,7 +2644,7 @@ class _InsightsScreenState extends State<InsightsScreen>
     final checkinFresh = lastCheckin != null &&
         DateTime.now().difference(lastCheckin.time).inHours <= 18;
     if (checkinFresh &&
-        lastCheckin!.energy <= 2 &&
+        lastCheckin.energy <= 2 &&
         _bella.todayWaterMl() < waterTarget * 0.6) {
       recs.add(_Rec(
         icon: Icons.water_drop_outlined,
@@ -2694,92 +2760,92 @@ class _InsightsScreenState extends State<InsightsScreen>
     return Reveal(
       size: RevealSize.large,
       child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: SageColors.card,
-            border: Border.all(color: SageColors.line),
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(6),
-              topRight: Radius.circular(20),
-              bottomLeft: Radius.circular(20),
-              bottomRight: Radius.circular(20),
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: SageColors.card,
+              border: Border.all(color: SageColors.line),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(6),
+                topRight: Radius.circular(20),
+                bottomLeft: Radius.circular(20),
+                bottomRight: Radius.circular(20),
+              ),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: SageColors.amber.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.emoji_events,
+                      color: SageColors.amber, size: 24),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${unlocked.length} / ${_achievements.length} unlocked',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: SageColors.ink),
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(3),
+                        child: LinearProgressIndicator(
+                          value: _achievements.isEmpty
+                              ? 0
+                              : unlocked.length / _achievements.length,
+                          minHeight: 6,
+                          backgroundColor: SageColors.line,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(SageColors.amber),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${_achievements.isEmpty ? 0 : (unlocked.length / _achievements.length * 100).round()}% complete',
+                        style:
+                            TextStyle(fontSize: 11, color: SageColors.inkSoft),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
           ),
-          child: Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: SageColors.amber.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(Icons.emoji_events,
-                    color: SageColors.amber, size: 24),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '${unlocked.length} / ${_achievements.length} unlocked',
-                      style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: SageColors.ink),
-                    ),
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: LinearProgressIndicator(
-                        value: _achievements.isEmpty
-                            ? 0
-                            : unlocked.length / _achievements.length,
-                        minHeight: 6,
-                        backgroundColor: SageColors.line,
-                        valueColor:
-                            AlwaysStoppedAnimation<Color>(SageColors.amber),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${_achievements.isEmpty ? 0 : (unlocked.length / _achievements.length * 100).round()}% complete',
-                      style:
-                          TextStyle(fontSize: 11, color: SageColors.inkSoft),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (unlocked.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          Text('UNLOCKED',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.6,
-                  color: SageColors.inkSoft)),
-          const SizedBox(height: 12),
-          _achievementsGrid(unlocked, dimmed: false),
+          if (unlocked.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Text('UNLOCKED',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    color: SageColors.inkSoft)),
+            const SizedBox(height: 12),
+            _achievementsGrid(unlocked, dimmed: false),
+          ],
+          if (locked.isNotEmpty) ...[
+            const SizedBox(height: 24),
+            Text('IN PROGRESS',
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.6,
+                    color: SageColors.inkSoft)),
+            const SizedBox(height: 12),
+            _achievementsGrid(locked, dimmed: true),
+          ],
         ],
-        if (locked.isNotEmpty) ...[
-          const SizedBox(height: 24),
-          Text('IN PROGRESS',
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.6,
-                  color: SageColors.inkSoft)),
-          const SizedBox(height: 12),
-          _achievementsGrid(locked, dimmed: true),
-        ],
-      ],
       ), // Column
     ); // Reveal
   }
@@ -3022,7 +3088,8 @@ class _InsightsScreenState extends State<InsightsScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 11, color: SageColors.inkSoft)),
+          Text(label,
+              style: TextStyle(fontSize: 11, color: SageColors.inkSoft)),
           const SizedBox(height: 4),
           Text(value,
               style: SageText.mono(

@@ -1,6 +1,5 @@
-import 'package:bella/models/user.dart';
-import 'package:flutter/material.dart';
-import '../services/bluetooth_service.dart';
+import '/models/user.dart';
+import 'package:material_ui/material_ui.dart';
 import '../services/data_storage_service.dart';
 import '../services/user_service.dart';
 import '../theme/bella_theme.dart';
@@ -143,9 +142,9 @@ class _NutritionLogScreenState extends State<NutritionLogScreen> {
         : (avgSteps > 7000 ? 1.375 : (avgSteps > 4000 ? 1.2 : 1.2));
     int maintenance = (bmr * activityMultiplier).round();
     int recommendedCal = maintenance;
-    if (bmi < 18.5)
+    if (bmi < 18.5) {
       recommendedCal = maintenance + 250;
-    else if (bmi >= 30)
+    } else if (bmi >= 30)
       recommendedCal = maintenance - 500;
     else if (bmi >= 25)
       recommendedCal = maintenance - 300;
@@ -220,11 +219,12 @@ class _NutritionLogScreenState extends State<NutritionLogScreen> {
           ElevatedButton(
             onPressed: () {
               final newGoal = int.tryParse(controller.text);
-              if (newGoal != null && newGoal >= 500)
+              if (newGoal != null && newGoal >= 500) {
                 Navigator.pop(ctx, newGoal);
-              else
+              } else {
                 ScaffoldMessenger.of(ctx)
                     .showSnackBar(const SnackBar(content: Text('≥500 ml')));
+              }
             },
             child: const Text('Save'),
           ),
@@ -272,11 +272,12 @@ class _NutritionLogScreenState extends State<NutritionLogScreen> {
           ElevatedButton(
             onPressed: () {
               final newGoal = int.tryParse(controller.text);
-              if (newGoal != null && newGoal >= 1000)
+              if (newGoal != null && newGoal >= 1000) {
                 Navigator.pop(ctx, newGoal);
-              else
+              } else {
                 ScaffoldMessenger.of(ctx)
                     .showSnackBar(const SnackBar(content: Text('≥1000 kcal')));
+              }
             },
             child: const Text('Save'),
           ),
@@ -489,7 +490,7 @@ class _NutritionLogScreenState extends State<NutritionLogScreen> {
             borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
                 value: percent,
-                backgroundColor: color.withOpacity(0.2),
+                backgroundColor: color.withValues(alpha: 0.2),
                 valueColor: AlwaysStoppedAnimation(color),
                 minHeight: 6)),
       ],
@@ -539,10 +540,10 @@ class _NutritionLogScreenState extends State<NutritionLogScreen> {
                           style: TextStyle(fontWeight: FontWeight.bold)),
                       OutlinedButton(
                           onPressed: _applySuggestedGoals,
-                          child: const Text('Apply'),
                           style: OutlinedButton.styleFrom(
                               minimumSize: const Size(70, 30),
-                              padding: EdgeInsets.zero))
+                              padding: EdgeInsets.zero),
+                          child: const Text('Apply'))
                     ]),
                 const SizedBox(height: 6),
                 Text('💧 $_suggestedWaterGoal ml water',

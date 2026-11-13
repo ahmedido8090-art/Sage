@@ -3,7 +3,7 @@
 // Animates a labeled progress bar from 0 (or its previous value) to
 // [score]. Duration now comes from SageMotion so it's not an isolated
 // 800ms with no relationship to the rest of the entrance system.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
 
@@ -44,7 +44,8 @@ class _AnimatedPillarRowState extends State<AnimatedPillarRow>
   @override
   void didUpdateWidget(covariant AnimatedPillarRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.score != widget.score || oldWidget.hasData != widget.hasData) {
+    if (oldWidget.score != widget.score ||
+        oldWidget.hasData != widget.hasData) {
       final prevProgress = _progress.value;
       _rebuildAnimation(
         from: prevProgress,
@@ -62,7 +63,8 @@ class _AnimatedPillarRowState extends State<AnimatedPillarRow>
     );
     _labelOpacity = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(
-          parent: _ctrl, curve: const Interval(0.0, 0.4, curve: Curves.easeOut)),
+          parent: _ctrl,
+          curve: const Interval(0.0, 0.4, curve: Curves.easeOut)),
     );
   }
 

@@ -1,7 +1,7 @@
 // widgets/wellness_grid_card.dart
 //
 // Rebuilt on the shared Reveal/Pressable primitives.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import 'reveal.dart';
 import 'pressable.dart';

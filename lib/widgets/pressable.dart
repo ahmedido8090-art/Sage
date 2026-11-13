@@ -10,7 +10,7 @@
 // Any tappable card/tile in the app should be built as:
 //   Pressable(onTap: ..., child: <the card's visual content>)
 // and nothing else needs to manage press state.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/motion.dart';
 
 class Pressable extends StatefulWidget {
@@ -30,9 +30,12 @@ class _PressableState extends State<Pressable> {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: widget.onTap,
-      onTapDown: widget.onTap == null ? null : (_) => setState(() => _pressed = true),
-      onTapUp: widget.onTap == null ? null : (_) => setState(() => _pressed = false),
-      onTapCancel: widget.onTap == null ? null : () => setState(() => _pressed = false),
+      onTapDown:
+          widget.onTap == null ? null : (_) => setState(() => _pressed = true),
+      onTapUp:
+          widget.onTap == null ? null : (_) => setState(() => _pressed = false),
+      onTapCancel:
+          widget.onTap == null ? null : () => setState(() => _pressed = false),
       child: AnimatedScale(
         scale: _pressed ? SageMotion.pressScale : 1.0,
         duration: SageMotion.pressDuration,

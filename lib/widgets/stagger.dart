@@ -7,7 +7,7 @@
 // StaggeredColumn), whose Future.delayed-in-initState pattern could stack
 // duplicate timers across rebuilds, and whose distance/duration constants
 // didn't match Reveal's.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/motion.dart';
 import 'reveal.dart';
 

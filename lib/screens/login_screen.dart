@@ -4,13 +4,12 @@
 // delay parameter instead of two hand-rolled AnimationControllers — same
 // primitive, same tokens, just staggered by an explicit delay so the logo
 // settles before the form rises in underneath it.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../services/user_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/motion.dart';
 import '../utils/page_transitions.dart';
 import '../widgets/reveal.dart';
-import '../widgets/pressable.dart';
 import 'dashboard_screen.dart';
 import 'signup_screen.dart';
 
@@ -64,7 +63,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Welcome back, ${_usernameController.text.trim()}!'),
+              content:
+                  Text('Welcome back, ${_usernameController.text.trim()}!'),
               backgroundColor: SageColors.moss,
               duration: const Duration(seconds: 2),
             ),
@@ -141,22 +141,23 @@ class _LoginScreenState extends State<LoginScreen> {
                   // ── Logo / greeting — settles first ──
                   Reveal(
                     child: Column(
-                        children: [
-                          Text('Sage', style: SageText.wordmark().copyWith(fontSize: 32)),
-                          const SizedBox(height: 10),
-                          Text(
-                            'Welcome back',
-                            textAlign: TextAlign.center,
-                            style: SageText.headline(),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Sign in to continue your wellness journey',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                                color: SageColors.inkSoft, fontSize: 13.5),
-                          ),
-                        ],
+                      children: [
+                        Text('Sage',
+                            style: SageText.wordmark().copyWith(fontSize: 32)),
+                        const SizedBox(height: 10),
+                        Text(
+                          'Welcome back',
+                          textAlign: TextAlign.center,
+                          style: SageText.headline(),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Sign in to continue your wellness journey',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                              color: SageColors.inkSoft, fontSize: 13.5),
+                        ),
+                      ],
                     ),
                   ),
 
@@ -167,200 +168,196 @@ class _LoginScreenState extends State<LoginScreen> {
                     size: RevealSize.large,
                     delay: SageMotion.staggerStep * 3,
                     child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          // Error box
-                          AnimatedSize(
-                            duration: SageMotion.valueChange,
-                            curve: Curves.easeOut,
-                            child: _errorMessage != null
-                                ? Column(
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.all(12),
-                                        decoration: BoxDecoration(
-                                          color: SageColors.clay
-                                              .withValues(alpha: 0.08),
-                                          borderRadius:
-                                              BorderRadius.circular(12),
-                                          border: Border.all(
-                                              color: SageColors.clay
-                                                  .withValues(alpha: 0.3)),
-                                        ),
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.error_outline,
-                                                color: SageColors.clay,
-                                                size: 20),
-                                            const SizedBox(width: 8),
-                                            Expanded(
-                                              child: Text(
-                                                _errorMessage!,
-                                                style: TextStyle(
-                                                    color: SageColors.clay),
-                                              ),
-                                            ),
-                                            IconButton(
-                                              icon: const Icon(Icons.close,
-                                                  size: 16),
-                                              onPressed: _clearError,
-                                              color: SageColors.clay,
-                                            ),
-                                          ],
-                                        ),
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Error box
+                        AnimatedSize(
+                          duration: SageMotion.valueChange,
+                          curve: Curves.easeOut,
+                          child: _errorMessage != null
+                              ? Column(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: SageColors.clay
+                                            .withValues(alpha: 0.08),
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                            color: SageColors.clay
+                                                .withValues(alpha: 0.3)),
                                       ),
-                                      const SizedBox(height: 16),
-                                    ],
-                                  )
-                                : const SizedBox.shrink(),
-                          ),
-
-                          TextFormField(
-                            controller: _usernameController,
-                            decoration: _inputDecoration(
-                                'Username', Icons.person_outline),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your username';
-                              }
-                              if (value.length < 3) {
-                                return 'Username must be at least 3 characters';
-                              }
-                              return null;
-                            },
-                            onChanged: (_) => _clearError(),
-                          ),
-                          const SizedBox(height: 14),
-
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: _obscurePassword,
-                            decoration: _inputDecoration(
-                              'Password',
-                              Icons.lock_outline,
-                              suffix: IconButton(
-                                icon: Icon(
-                                  _obscurePassword
-                                      ? Icons.visibility_outlined
-                                      : Icons.visibility_off_outlined,
-                                  color: SageColors.inkSoft,
-                                  size: 19,
-                                ),
-                                onPressed: () => setState(
-                                    () => _obscurePassword = !_obscurePassword),
-                              ),
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter your password';
-                              }
-                              if (value.length < 6) {
-                                return 'Password must be at least 6 characters';
-                              }
-                              return null;
-                            },
-                            onChanged: (_) => _clearError(),
-                          ),
-
-                          const SizedBox(height: 14),
-
-                          Row(
-                            children: [
-                              SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: Checkbox(
-                                  value: _keepLoggedIn,
-                                  activeColor: SageColors.moss,
-                                  materialTapTargetSize:
-                                      MaterialTapTargetSize.shrinkWrap,
-                                  onChanged: (value) => setState(
-                                      () => _keepLoggedIn = value ?? false),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              GestureDetector(
-                                behavior: HitTestBehavior.opaque,
-                                onTap: () => setState(
-                                    () => _keepLoggedIn = !_keepLoggedIn),
-                                child: Text(
-                                  'Keep me logged in',
-                                  style: TextStyle(
-                                      color: SageColors.inkSoft,
-                                      fontSize: 13.5),
-                                ),
-                              ),
-                            ],
-                          ),
-
-                          const SizedBox(height: 18),
-
-                          SizedBox(
-                            height: 52,
-                            child: ElevatedButton(
-                              onPressed: _isLoading ? null : _handleLogin,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: SageColors.moss,
-                                foregroundColor: SageColors.linen,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(14),
-                                ),
-                                elevation: 0,
-                              ),
-                              child: AnimatedSwitcher(
-                                duration: SageMotion.valueChange,
-                                child: _isLoading
-                                    ? SizedBox(
-                                        key: const ValueKey('loader'),
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                          color: SageColors.linen,
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'LOG IN',
-                                        key: ValueKey('label'),
-                                        style: TextStyle(
-                                          fontSize: 14.5,
-                                          fontWeight: FontWeight.w600,
-                                          letterSpacing: 0.8,
-                                        ),
+                                      child: Row(
+                                        children: [
+                                          Icon(Icons.error_outline,
+                                              color: SageColors.clay, size: 20),
+                                          const SizedBox(width: 8),
+                                          Expanded(
+                                            child: Text(
+                                              _errorMessage!,
+                                              style: TextStyle(
+                                                  color: SageColors.clay),
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.close,
+                                                size: 16),
+                                            onPressed: _clearError,
+                                            color: SageColors.clay,
+                                          ),
+                                        ],
                                       ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                  ],
+                                )
+                              : const SizedBox.shrink(),
+                        ),
+
+                        TextFormField(
+                          controller: _usernameController,
+                          decoration: _inputDecoration(
+                              'Username', Icons.person_outline),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter your username';
+                            }
+                            if (value.length < 3) {
+                              return 'Username must be at least 3 characters';
+                            }
+                            return null;
+                          },
+                          onChanged: (_) => _clearError(),
+                        ),
+                        const SizedBox(height: 14),
+
+                        TextFormField(
+                          controller: _passwordController,
+                          obscureText: _obscurePassword,
+                          decoration: _inputDecoration(
+                            'Password',
+                            Icons.lock_outline,
+                            suffix: IconButton(
+                              icon: Icon(
+                                _obscurePassword
+                                    ? Icons.visibility_outlined
+                                    : Icons.visibility_off_outlined,
+                                color: SageColors.inkSoft,
+                                size: 19,
                               ),
+                              onPressed: () => setState(
+                                  () => _obscurePassword = !_obscurePassword),
                             ),
                           ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter your password';
+                            }
+                            if (value.length < 6) {
+                              return 'Password must be at least 6 characters';
+                            }
+                            return null;
+                          },
+                          onChanged: (_) => _clearError(),
+                        ),
 
-                          const SizedBox(height: 26),
+                        const SizedBox(height: 14),
 
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                "Don't have an account? ",
+                        Row(
+                          children: [
+                            SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: Checkbox(
+                                value: _keepLoggedIn,
+                                activeColor: SageColors.moss,
+                                materialTapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                                onChanged: (value) => setState(
+                                    () => _keepLoggedIn = value ?? false),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => setState(
+                                  () => _keepLoggedIn = !_keepLoggedIn),
+                              child: Text(
+                                'Keep me logged in',
                                 style: TextStyle(
-                                    color: SageColors.inkSoft,
-                                    fontSize: 13.5),
+                                    color: SageColors.inkSoft, fontSize: 13.5),
                               ),
-                              GestureDetector(
-                                onTap: () => Navigator.push(
-                                  context,
-                                  slideRightRoute(const SignupScreen()),
-                                ),
-                                child: Text(
-                                  'Sign up',
-                                  style: TextStyle(
-                                    color: SageColors.moss,
-                                    fontWeight: FontWeight.w700,
-                                    fontSize: 13.5,
-                                  ),
-                                ),
+                            ),
+                          ],
+                        ),
+
+                        const SizedBox(height: 18),
+
+                        SizedBox(
+                          height: 52,
+                          child: ElevatedButton(
+                            onPressed: _isLoading ? null : _handleLogin,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: SageColors.moss,
+                              foregroundColor: SageColors.linen,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
                               ),
-                            ],
+                              elevation: 0,
+                            ),
+                            child: AnimatedSwitcher(
+                              duration: SageMotion.valueChange,
+                              child: _isLoading
+                                  ? SizedBox(
+                                      key: const ValueKey('loader'),
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        color: SageColors.linen,
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'LOG IN',
+                                      key: ValueKey('label'),
+                                      style: TextStyle(
+                                        fontSize: 14.5,
+                                        fontWeight: FontWeight.w600,
+                                        letterSpacing: 0.8,
+                                      ),
+                                    ),
+                            ),
                           ),
-                        ],
-                      ),
+                        ),
+
+                        const SizedBox(height: 26),
+
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              "Don't have an account? ",
+                              style: TextStyle(
+                                  color: SageColors.inkSoft, fontSize: 13.5),
+                            ),
+                            GestureDetector(
+                              onTap: () => Navigator.push(
+                                context,
+                                slideRightRoute(const SignupScreen()),
+                              ),
+                              child: Text(
+                                'Sign up',
+                                style: TextStyle(
+                                  color: SageColors.moss,
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13.5,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ), // Reveal (form)
                 ],
               ),

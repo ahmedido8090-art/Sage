@@ -5,7 +5,7 @@
 // current value; only changes animate). Uses SageMotion.numberCountUp
 // as its default so every count-up in the app (BPM, steps, score) moves
 // at the same speed unless a call site has a specific reason to differ.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/motion.dart';
 
 class AnimatedNumber extends StatefulWidget {

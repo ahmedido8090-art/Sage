@@ -4,7 +4,7 @@
 // inline AnimationController — this is what makes its entrance/press feel
 // identical to every other tile in the app rather than subtly its own
 // thing.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 import 'animated_number.dart';
 import 'reveal.dart';

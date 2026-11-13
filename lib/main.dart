@@ -4,7 +4,8 @@
 //  • `home` is now SplashScreen (which handles its own navigation to
 //    Dashboard or Login after the branded intro animation).
 //  • All other setup is unchanged.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart'
+    hide GlobalMaterialLocalizations, GlobalWidgetsLocalizations;
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'screens/splash_screen.dart';

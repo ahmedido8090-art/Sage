@@ -18,7 +18,7 @@
 // `Curves.easeXxx` for entrance, press-feedback, or section-transition
 // purposes. Use a constant from here. If a new situation doesn't fit an
 // existing token, add a token — don't invent a number inline.
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 class SageMotion {
   SageMotion._();

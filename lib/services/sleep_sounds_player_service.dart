@@ -16,7 +16,7 @@
 // as long as the app process does. The screen becomes a thin UI layer that
 // reads/writes through this singleton and rebuilds via ChangeNotifier.
 import 'dart:async';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'bella_service.dart';
 

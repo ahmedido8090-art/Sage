@@ -1,5 +1,5 @@
 // widgets/wellness_activity_tile.dart
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import '../theme/app_theme.dart';
 
 /// Activity card used in the dashboard's horizontal-scrolling
@@ -27,7 +27,8 @@ class WellnessActivityTile extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: 124,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8), // reduced vertical padding
+        padding: const EdgeInsets.symmetric(
+            horizontal: 14, vertical: 8), // reduced vertical padding
         decoration: BoxDecoration(
           color: SageColors.card,
           borderRadius: const BorderRadius.only(
@@ -45,7 +46,8 @@ class WellnessActivityTile extends StatelessWidget {
             const SizedBox(height: 12), // reduced from 22
             Text(
               title,
-              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
+              style:
+                  const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600),
               overflow: TextOverflow.ellipsis, // prevent horizontal overflow
               maxLines: 1,
             ),
